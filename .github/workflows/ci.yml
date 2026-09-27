@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # The engine and the shipped pool are pure ES modules: no browser, no install step, no
+  # dependencies. The Syntax list below is the SAME file set as `npm run check` in package.json —
+  # if you widen one, widen the other, or a new directory silently escapes both gates.
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax
+        run: for f in js/*.js js/*/*.js server.cjs electron/main.cjs tools/*.mjs test/*.mjs; do node --check "$f"; done
+      - name: Suites
+        # library.test.mjs is the one that matters: it re-solves every lot in js/data/lots.js
+        # from the serialised book, so a hand-edited value or a stale bake fails the build here.
+        run: for f in test/*.test.mjs; do echo "::group::$f"; node "$f"; echo "::endgroup::"; done
+
+  # The shell is only proven by driving a real page with real mouse/keyboard events over CDP.
+  # SKIP_UNIT=1 stops verify.sh from re-running the suites the unit job already ran.
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Headless playtest
+        env:
+          SKIP_UNIT: 1
+          WD_TIMEOUT: 300
+        run: bash tools/verify.sh

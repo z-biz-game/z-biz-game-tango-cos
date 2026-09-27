@@ -1,0 +1,38 @@
+{
+  "name": "tango",
+  "version": "1.0.0",
+  "description": "破码 TANGO — 浏览器原生 Mastermind. 每一关“几次必破”由极小极大搜索量出, 并与信息下界和另一族算法互相复验.",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "start": "node server.cjs",
+    "dev": "node server.cjs 5190",
+    "electron": "electron .",
+    "bake": "node tools/bake.mjs",
+    "bench": "node tools/bench.mjs",
+    "check": "for f in js/*.js js/*/*.js server.cjs electron/main.cjs tools/*.mjs test/*.mjs; do node --check \"$f\" || exit 1; done && echo OK",
+    "unit": "for f in test/*.test.mjs; do node \"$f\" || exit 1; done",
+    "test": "npm run check && npm run unit",
+    "verify": "bash tools/verify.sh"
+  },
+  "keywords": [
+    "game",
+    "puzzle",
+    "mastermind",
+    "minimax",
+    "information-theory",
+    "procedural",
+    "electron"
+  ],
+  "author": "z-biz-game",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {},
+  "build": {
+    "appId": "com.zbiz.tango",
+    "productName": "Tango",
+    "mac": { "category": "public.app-category.puzzle-games" },
+    "win": { "target": "nsis" },
+    "linux": { "target": "AppImage" }
+  }
+}
