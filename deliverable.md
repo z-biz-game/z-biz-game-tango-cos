@@ -142,10 +142,37 @@ file: 196.1 kB in 34.4s total
 
 - **浏览器内生成/搜索**：故意不做（DESIGN 第 2/3.2 节实测：siege 单本 >2 s）。"换一关"是从烤好的池子换种子取关。
 - **Electron 打包产物**：`electron/main.cjs` 存在且过 `node --check`，但仓库不装 electron，**未跑真实启动**。
-- **CI/Pages 未实跑**：`ci.yml`/`pages.yml` 已按契约写好（Syntax 步与 `npm run check` 文件集逐字一致；
-  Pages 只 `cp index.html css js`，绝不 `path: .`），但本地不触发 Actions，未见于真实 runner 绿。
+- **CI/Pages 已在真实 runner 绿**：`ci.yml`/`pages.yml` 按契约写好（Syntax 步与 `npm run check` 文件集逐字
+  一致；Pages 只 `cp index.html css js`，绝不 `path: .`）。2026-09-27 主代理发布后 Actions 实跑
+  `success`（trigger sha `9d8fb3b`），线上产物见下面的「线上验收」一节。
 - **成就 / 排行 / 云存档 / 战绩分享**：组织规范 E 组禁止；分享只有 `#/lot/<id>`（同关不含分数）。
 - **移动端真机手势验证**：`@pointer` 用 CDP 派发合成鼠标/键盘事件，未在真 touch 设备验证 `touch-action`。
 - **大于 420 死区另一侧的更难关卡**：`|S|` 再往上需先重解搜索预算，非调大 `maxMs` 可及。
 - **通关音效 / 彩带 / 美术资产**：全仓 0 个二进制资产文件。
 - **多语言**：UI 只有中文。
+
+## 线上验收（GitHub Pages，主代理 2026-09-27 实抓）
+
+发布 sha `44b9e28`，CI trigger `9d8fb3b` → Actions `success`。
+
+产物可达性（`curl`，只看 HTTP 状态与字节数）：
+
+| 资源 | 结果 |
+| --- | --- |
+| `/`（index.html） | 200 / 3,474 B |
+| `js/main.js` | 200 / 17,917 B |
+| `css/game.css` | 200 / 6,545 B |
+| `js/data/lots.js` | 200 / 200,780 B |
+| `<title>` | 与 README 标题一致 |
+
+真实浏览器渲染（`https://z-biz-game.github.io/z-biz-game-tango-cos/`，2026-09-27 09:35Z）：
+
+- `document.title` = `破码 · TANGO`；
+- canvas 后备缓冲 `1384x1142`，CSS 盒 `692x570.7`（devicePixelRatio 2 生效，不是 300x150 的未布局默认值）；
+- `getImageData` 全量采样 1,580,528 个像素：其中 **1,233,850 个非近黑**，出现 **2,341 种不同 RGB**——
+  画布确实在画棋盘与棋子，而不是留一张黑底；
+- `window.tango` 存在并暴露 **18 个键**（应用钩子已挂上，路由可寻址）；
+- 控制台 **0 条消息**（无 error、无 warning，也没有 `/favicon.ico` 404 —— 图标是内联 SVG data-URI）。
+
+诚实边界：这一节是"结构 + 像素统计"级别的证据（在真实页面里跑 `evaluate_script` 取 `getImageData`），
+**不是**逐帧视觉比对的截图；本次未产出 PNG 截图，仓库也保持 0 个二进制资产。
