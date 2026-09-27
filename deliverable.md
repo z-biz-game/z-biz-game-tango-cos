@@ -172,7 +172,9 @@ file: 196.1 kB in 34.4s total
 - `getImageData` 全量采样 1,580,528 个像素：其中 **1,233,850 个非近黑**，出现 **2,341 种不同 RGB**——
   画布确实在画棋盘与棋子，而不是留一张黑底；
 - `window.tango` 存在并暴露 **18 个键**（应用钩子已挂上，路由可寻址）；
-- 控制台 **0 条消息**（无 error、无 warning，也没有 `/favicon.ico` 404 —— 图标是内联 SVG data-URI）。
+- 控制台 **0 条消息**（无 error、无 warning）。这也覆盖了 `/favicon.ico`：`index.html:8` 用的是
+  `<link rel="icon" href="data:,">`（一个空 data URI，浏览器因此根本不发 favicon 请求），
+  见 DESIGN.md 第 6 条；**不是**内联 SVG 图标——那是后续可选的视觉打磨，与本节的"console 干净"无关。
 
 诚实边界：这一节是"结构 + 像素统计"级别的证据（在真实页面里跑 `evaluate_script` 取 `getImageData`），
 **不是**逐帧视觉比对的截图；本次未产出 PNG 截图，仓库也保持 0 个二进制资产。
