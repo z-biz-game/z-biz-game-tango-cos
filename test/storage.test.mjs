@@ -9,7 +9,7 @@
 //   trying to break it first.
 
 import { test, ok, eq, run } from '../tools/harness.mjs';
-import { store, persistent } from '../js/core/storage.js';
+import { store, persistent, reload, droppedRecords } from '../js/core/storage.js';
 
 test('no window: persistent() says false and nothing throws', () => {
   eq(typeof window, 'undefined', 'this suite is only meaningful without a DOM global');
@@ -98,6 +98,81 @@ test('records survive reads in the same session (the memory cache IS the store h
   const viaMethod = store.record('x-9');
   eq(viaGetter, viaMethod, 'one store, two doors');
   eq(viaMethod.best, 2, 'and the value is what was written');
+});
+
+// ---- 脏存档：一段垃圾只能弄脏它自己 -------------------------------------------------
+// The decoder used to take `records` and `daily` straight out of JSON, so one hostile entry
+// reached the render loop — `guesses < prev.best` with `best` a string is a silent false, and
+// `prev.done` on a number is a TypeError on the way to the first paint. That makes a single
+// bad byte a whole-game outage. Two stages now: bytes first (JSON.parse), then per record, so
+// an unusable record is dropped alone and the rest of the file is still a save file.
+function fakeStorage(raw) {
+  const map = new Map();
+  if (raw !== undefined) map.set('tango.save.v1', raw);
+  return {
+    getItem: (k) => (map.has(k) ? map.get(k) : null),
+    setItem: (k, v) => { map.set(k, String(v)); },
+    removeItem: (k) => { map.delete(k); },
+  };
+}
+
+test('one junk record drops itself, not its 30 neighbours', () => {
+  globalThis.window = { localStorage: fakeStorage(JSON.stringify({
+    records: {
+      'good-1': { solved: true, best: 4, plays: 3, par: true },
+      'bad-null': null,
+      'bad-number': 7,
+      'bad-array': [1, 2],
+      'bad-string': 'oops',
+      'soft-best': { solved: true, best: '5', plays: -3, par: 1 },
+    },
+    daily: {
+      '2026-03-01': { id: 'good-1', done: true, guesses: 4, at: 1700000000000 },
+      '2026-03-02': 'oops',
+      '2026-03-03': 12,
+    },
+    unlocked: '12',
+    stats: { breaks: 'x', par: 3, guesses: 2, hints: -1, rows: null },
+  })) };
+  reload();
+
+  eq(Object.keys(store.records).sort(), ['good-1', 'soft-best'], 'the two decodable records survive');
+  eq(store.record('good-1'), { solved: true, best: 4, plays: 3, par: true }, 'untouched');
+  eq(store.record('bad-string'), null, 'the junk one reads as absent, exactly like an unsolved id');
+  eq(store.record('soft-best'), { solved: true, best: 5, plays: 0, par: true }, 'repairable fields are repaired, not dropped');
+  eq(droppedRecords(), 6, '4 records + 2 daily entries counted as dropped');
+  eq(store.unlocked, 12, '"12" is a number the campaign can use');
+  eq(Object.keys(store.daily), ['2026-03-01'], 'the good day survives');
+  const s = store.stats;
+  eq([s.breaks, s.par, s.guesses, s.hints, s.rows], [0, 3, 2, 0, 0], 'each stat field decoded alone');
+  eq(store.totals(), { solved: 2, atPar: 2, breaks: 0, hints: 0 }, 'the header can be built from a dirty file');
+
+  // And the writer must not choke on the file it just half-rejected: solving a dropped id and
+  // re-marking a dropped day both start from a blank record rather than from the junk.
+  const r = store.solve('bad-string', { guesses: 3, par: 3, hints: 0, rows: 3, won: true });
+  eq([r.best, r.solved, r.plays, r.par], [3, true, 1, true], 'writing over a dropped record works');
+  const m = store.markDaily('2026-03-02', 'good-1', { guesses: 5 });
+  eq([m.done, m.guesses], [true, 5], 'writing over a dropped day works');
+  eq(store.markDaily('2026-03-01', 'good-1', { guesses: 9 }).guesses, 4, 'a good day still refuses to inflate');
+});
+
+test('a file that is not JSON at all degrades to blank instead of throwing', () => {
+  globalThis.window = { localStorage: fakeStorage('{"records": {"a":') };
+  reload();
+  eq([store.unlocked, Object.keys(store.records).length, store.stats.breaks], [1, 0, 0], 'blank slate');
+  eq(droppedRecords(), 0, 'nothing to count — stage 1 already refused the bytes');
+  store.solve('a', { guesses: 2, par: 2, hints: 0, rows: 2, won: true });
+  eq(store.record('a').best, 2, 'and the game is writable afterwards');
+
+  // A JSON scalar/array is technically parseable and still not a save file.
+  globalThis.window.localStorage.setItem('tango.save.v1', '[1,2,3]');
+  reload();
+  eq([store.unlocked, Object.keys(store.records).length], [1, 0], 'an array is not an object shape');
+
+  globalThis.window.localStorage.setItem('tango.save.v1', '"just a string"');
+  reload();
+  eq([store.unlocked, Object.keys(store.daily).length], [1, 0], 'a scalar is not a save either');
+  delete globalThis.window;
 });
 
 run();

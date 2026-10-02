@@ -22,7 +22,59 @@ function blank() {
   };
 }
 
+// ---- stage 2: sanitise ---------------------------------------------------------------
+// Stage 1 (JSON.parse) only tells us the bytes were valid JSON. The shape is the part that
+// can still be hostile: a hand-edited file, a save written by a older/newer build, or one
+// truncated by a quota error mid-write. So every field is decoded on its own, and a bad
+// record is dropped on its own — losing one lot's history must not lose the other 30, and
+// must not throw on the way to the first render.
+function count(v) {
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+}
+
+function posInt(v) {
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : null;
+}
+
+// A record is only believable if its numbers are numbers and its flags are flags. `best`
+// is the one field the UI compares against a live guess count, so a string there would
+// turn `guesses < prev.best` into a silent false instead of a new personal best.
+function decodeRecord(v) {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+  const best = posInt(v.best);
+  return {
+    solved: !!v.solved || (best !== null),
+    best,
+    plays: count(v.plays),
+    par: !!v.par,
+  };
+}
+
+function decodeDaily(v) {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+  return {
+    id: typeof v.id === 'string' || typeof v.id === 'number' ? v.id : null,
+    done: !!v.done,
+    guesses: count(v.guesses),
+    at: posInt(v.at) || 0,
+  };
+}
+
+function decodeMap(raw, decode) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const out = {};
+  let dropped = 0;
+  for (const [k, v] of Object.entries(raw)) {
+    const clean = decode(v);
+    if (clean) out[k] = clean; else dropped++;
+  }
+  return { map: out, dropped };
+}
+
 let cache = null;
+let droppedCount = 0;
 
 function readRaw() {
   try {
@@ -36,24 +88,42 @@ function load() {
   if (cache) return cache;
   const raw = readRaw();
   if (raw) {
+    let parsed = null;
     try {
-      const p = JSON.parse(raw);
-      if (p && typeof p === 'object') {
-        const base = blank();
-        cache = {
-          records: p.records && typeof p.records === 'object' ? p.records : base.records,
-          daily: p.daily && typeof p.daily === 'object' ? p.daily : base.daily,
-          unlocked: Number(p.unlocked) > 0 ? Number(p.unlocked) : base.unlocked,
-          stats: { ...base.stats, ...(p.stats || {}) },
-        };
-        return cache;
-      }
+      parsed = JSON.parse(raw);
     } catch (err) {
-      // A corrupt save is not worth keeping; start clean rather than crash the shell.
+      // Un-parseable bytes carry no information worth keeping: start clean rather than crash.
+    }
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const base = blank();
+      const records = decodeMap(parsed.records, decodeRecord);
+      const daily = decodeMap(parsed.daily, decodeDaily);
+      const statsIn = parsed.stats && typeof parsed.stats === 'object' ? parsed.stats : {};
+      droppedCount = (records ? records.dropped : 0) + (daily ? daily.dropped : 0);
+      cache = {
+        records: records ? records.map : base.records,
+        daily: daily ? daily.map : base.daily,
+        unlocked: posInt(parsed.unlocked) || base.unlocked,
+        stats: {
+          breaks: count(statsIn.breaks),
+          par: count(statsIn.par),
+          guesses: count(statsIn.guesses),
+          hints: count(statsIn.hints),
+          rows: count(statsIn.rows),
+        },
+      };
+      return cache;
     }
   }
   cache = blank();
   return cache;
+}
+
+// How many records/daily entries the decoder threw away on the last read. Diagnostics only:
+// deliberately kept outside `cache` so it never lands in the persisted file.
+export function droppedRecords() {
+  load();
+  return droppedCount;
 }
 
 function persist() {
@@ -134,7 +204,8 @@ export const store = {
   },
 
   reset() {
-    cache = blank();
+    cache = null;
+    droppedCount = 0;
     try {
       window.localStorage.removeItem(KEY);
     } catch (err) {
@@ -142,6 +213,14 @@ export const store = {
     }
   },
 };
+
+// Drop the in-memory copy and read the file again — what a page reload does. Only used by the
+// tests (and by a future "import save" flow), but it is what makes the decoder observable:
+// without it the first decode is cached forever and a junk save could be silently self-healing.
+export function reload() {
+  cache = null;
+  droppedCount = 0;
+}
 
 // Only for the test: which backing store this session actually got.
 export function persistent() {
