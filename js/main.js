@@ -18,6 +18,7 @@ import {
 } from './core/library.js';
 import { todayKey, rngFrom } from './core/rng.js';
 import { createView } from './view.js';
+import { createAudio } from './audio.js';
 
 const $ = (id) => document.getElementById(id);
 const el = {
@@ -27,6 +28,8 @@ const el = {
   restart: $('restart'), share: $('share'), next: $('next'), again: $('again'), toast: $('toast'),
   canvas: $('board'), wipe: $('wipe'), drawer: $('drawer'), bookcount: $('bookcount'),
   chips: $('chips'), chipmore: $('chipmore'),
+  pause: $('pause'), mute: $('mute'), fullscreen: $('fullscreen'), help: $('help'),
+  resume: $('resume'), pausecard: $('pausecard'), helpcard: $('helpcard'), helpclose: $('helpclose'),
 };
 
 const LEVELS = ALL.length;
@@ -34,6 +37,27 @@ const LEVELS = ALL.length;
 // profiles), and `store` then runs on its memory cache for the rest of the session. The header
 // says so rather than quietly losing the player's records at the tab close.
 const CAN_PERSIST = persistent();
+// One sound setting is worth persisting; it is the player's promise to the room, not a score.
+const MUTE_KEY = 'tango.muted';
+function readMuted() {
+  try {
+    return window.localStorage.getItem(MUTE_KEY) === '1';
+  } catch (err) {
+    return false;
+  }
+}
+function writeMuted(v) {
+  try {
+    window.localStorage.setItem(MUTE_KEY, v ? '1' : '0');
+  } catch (err) {
+    /* memory-only session: the setting just does not survive a reload */
+  }
+}
+
+const MOTION_QUERY = typeof window.matchMedia === 'function'
+  ? window.matchMedia('(prefers-reduced-motion: reduce)')
+  : null;
+const audio = createAudio({ muted: readMuted() });
 const app = {
   mode: 'campaign',
   index: 1,
@@ -44,6 +68,12 @@ const app = {
   label: '',
   day: null,
   lastLine: '',
+  paused: false,
+  muted: audio.muted,
+  fullscreen: false,
+  helpOpen: false,
+  reducedMotion: !!(MOTION_QUERY && MOTION_QUERY.matches),
+  sw: false,
 };
 
 function clampIndex(n) {
@@ -116,6 +146,11 @@ function apply() {
   app.hints = 0;
   app.route = rt;
   app.game = createGame(app.lot, { space: SPACE });
+  // A new lot is a new board: it must not arrive still paused, or still behind the rules card.
+  if (view) {
+    setPaused(false);
+    setHelp(false);
+  }
   view.setGame(app.game);
   view.measure();
   el.curtain.hidden = true;
@@ -178,13 +213,16 @@ function drawChips() {
 // ---- playing -------------------------------------------------------------
 
 function commit() {
+  if (!playing()) return;
   const g = app.game;
   const r = submit(g);
   if (!r.ok) {
+    audio.play('illegal');
     if (r.reason === 'incomplete') render(`<span class="warn">这行还差 ${r.need} 枚 peg 才能提交</span>`);
     else if (r.reason === 'over') render('本关已经结束，按重开再来。');
     return;
   }
+  audio.play('answer', r.black, r.white);
   const line = `第 ${g.rows.length} 次：<b>${r.black}</b> 黑 <b>${r.white}</b> 白 · 剩余候选 ${r.left}${r.repeat ? ' · 这一码你猜过了' : ''}`;
   if (g.done) {
     finish(line);
@@ -212,14 +250,17 @@ function finish(line) {
       + `提示用了 ${app.hints} 次${used <= lot.par ? ' · 你打平了搜索量出来的最坏情况' : ''}`
     : `候选还剩 <b>${g.cands.length}</b> 个 · 精确值 ${lot.par} 次本该够 · 按“重开”再试一次`;
   el.curtain.hidden = false;
+  audio.play(g.won ? 'win' : 'lose');
   render(line);
   view.setGame(g);
 }
 
 function doHint() {
+  if (!playing()) return;
   const g = app.game;
   const h = hint(g);
   if (!h) return;
+  audio.play('hint');
   app.hints++;
   g.hints++;
   const code = SPACE.format(h.guess);
@@ -236,6 +277,101 @@ function digitsOf(guess) {
   const out = [];
   for (let p = 0; p < SPACE.L; p++) out.push(SPACE.digits[guess * SPACE.L + p]);
   return out;
+}
+
+// ---- system controls -----------------------------------------------------
+
+// Gameplay input is dead while the board is frozen. This is the one guard, checked by every
+// action, so "paused" cannot mean "the buttons still work but the animation stopped".
+function playing() {
+  return !app.paused && !app.helpOpen;
+}
+
+function setPaused(v) {
+  const next = !!v;
+  if (next === app.paused) return next;
+  app.paused = next;
+  view.setPaused(next);
+  // Pausing stops the sound too, and unpausing must not replay what was skipped: the context is
+  // suspended, so any voice scheduled during the pause window is simply gone.
+  if (next) audio.suspend();
+  else if (!app.muted) audio.resume();
+  el.pausecard.hidden = !next;
+  el.pause.setAttribute('aria-pressed', String(next));
+  el.pause.textContent = next ? '▶' : '⏸';
+  el.pause.setAttribute('aria-label', next ? '继续' : '暂停');
+  return next;
+}
+
+function togglePause() {
+  if (app.game && app.game.done && !app.paused) return false;
+  const on = setPaused(!app.paused);
+  render(on ? '已暂停 · 动画与音效冻结' : '继续 · 回到牌桌');
+  return on;
+}
+
+// Mute is the AudioContext's own state plus a refusal to build voices — not a gain of 0.
+function setMuted(v) {
+  app.muted = audio.setMuted(!!v);
+  writeMuted(app.muted);
+  el.mute.setAttribute('aria-pressed', String(app.muted));
+  el.mute.textContent = app.muted ? '🔇' : '🔊';
+  el.mute.setAttribute('aria-label', app.muted ? '取消静音' : '静音');
+  return app.muted;
+}
+
+function toggleMute() {
+  const m = setMuted(!app.muted);
+  if (!m) audio.play('ui');
+  toast(m ? '已静音（AudioContext 已挂起）' : '声音已开');
+  return m;
+}
+
+function isFullscreen() {
+  return !!(document.fullscreenElement || document.webkitFullscreenElement);
+}
+
+function syncFullscreen() {
+  app.fullscreen = isFullscreen();
+  el.fullscreen.setAttribute('aria-pressed', String(app.fullscreen));
+  el.fullscreen.textContent = app.fullscreen ? '🗗' : '⛶';
+  // The layout is measured off the canvas box, so a fullscreen change is a resize.
+  view.measure();
+}
+
+function toggleFullscreen() {
+  const root = document.documentElement;
+  if (isFullscreen()) {
+    const exit = document.exitFullscreen || document.webkitExitFullscreen;
+    if (exit) Promise.resolve(exit.call(document)).catch(() => { /* denied */ });
+    return false;
+  }
+  const req = root.requestFullscreen || root.webkitRequestFullscreen;
+  if (!req) {
+    toast('这个浏览器不支持全屏');
+    return false;
+  }
+  Promise.resolve(req.call(root)).then(() => {
+    toast('全屏 · 再按 F 或 Esc 退出');
+  }, () => {
+    toast('全屏被拒绝了（需要一次真实点击）');
+  });
+  return true;
+}
+
+function setHelp(v) {
+  app.helpOpen = !!v;
+  el.helpcard.hidden = !app.helpOpen;
+  el.help.setAttribute('aria-pressed', String(app.helpOpen));
+  if (app.helpOpen) audio.suspend();
+  else if (!app.muted && !app.paused) audio.resume();
+  return app.helpOpen;
+}
+
+function toggleHelp() {
+  const open = setHelp(!app.helpOpen);
+  el.help.setAttribute('aria-label', open ? '关闭玩法说明' : '玩法说明');
+  return open;
 }
 
 // ---- wiring --------------------------------------------------------------
@@ -258,11 +394,19 @@ function shareLink() {
 }
 
 function restart() {
+  // A restart from the pause card or the help card has to unfreeze as well as refill, or the new
+  // board arrives already frozen.
+  setPaused(false);
+  setHelp(false);
+  clearTimeout(toast.timer);
+  toast.timer = 0;
+  el.toast.hidden = true;
   const g = app.game;
   reset(g);
   app.hints = 0;
   el.curtain.hidden = true;
   view.setGame(g);
+  view.resetClock();
   render(`重开 · 码本 ${g.size} 码 · 精确值 ${g.par} 次必破`);
 }
 
@@ -283,13 +427,17 @@ el.modes.addEventListener('click', (ev) => {
   else go(`#/c/${app.index || store.unlocked}`);
 });
 el.take.addEventListener('click', () => {
+  if (!playing()) return;
   if (take(app.game)) {
+    audio.play('take');
     view.setGame(app.game);
     render(`这行还剩 ${SPACE.L - app.game.draft.length} 格`);
   }
 });
 el.undo.addEventListener('click', () => {
+  if (!playing()) return;
   if (undo(app.game)) {
+    audio.play('take');
     el.curtain.hidden = true;
     view.setGame(app.game);
     render(`退回一步 · 候选 ${app.game.cands.length} 个`);
@@ -300,6 +448,34 @@ el.restart.addEventListener('click', restart);
 el.share.addEventListener('click', shareLink);
 el.again.addEventListener('click', restart);
 el.next.addEventListener('click', () => go(`#/c/${Math.min(LEVELS, (app.index || 1) + 1)}`));
+// The system row is reachable by click and by key; both go through the same four functions so
+// the button state can never disagree with what the keyboard did.
+el.pause.addEventListener('click', togglePause);
+el.resume.addEventListener('click', () => { setPaused(false); render('继续 · 回到牌桌'); });
+el.mute.addEventListener('click', toggleMute);
+el.fullscreen.addEventListener('click', toggleFullscreen);
+el.help.addEventListener('click', toggleHelp);
+el.helpclose.addEventListener('click', () => { setHelp(false); render('按 1–6 或点色板放第一枚 peg'); });
+document.addEventListener('fullscreenchange', syncFullscreen);
+document.addEventListener('webkitfullscreenchange', syncFullscreen);
+if (MOTION_QUERY) {
+  const onMotion = (ev) => {
+    app.reducedMotion = !!(ev && ev.matches);
+    view.setReducedMotion(app.reducedMotion);
+  };
+  if (MOTION_QUERY.addEventListener) MOTION_QUERY.addEventListener('change', onMotion);
+  else if (MOTION_QUERY.addListener) MOTION_QUERY.addListener(onMotion);
+}
+// A hidden tab pauses. Left alone, the rAF loop stops firing anyway and the elapsed time would
+// come back as one giant dt on return — pausing makes that a feature instead of an accident.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    setPaused(true);
+    audio.suspend();
+  } else if (!app.muted) {
+    audio.resume();
+  }
+});
 
 // Wiping the save is the one destructive thing this game can do, so it asks twice instead of
 // firing on a stray click.
@@ -321,65 +497,94 @@ window.addEventListener('hashchange', apply);
 window.addEventListener('resize', () => view.measure());
 window.addEventListener('keydown', (ev) => {
   if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
-  const g = app.game;
-  if (!g || g.done) {
-    if (ev.key === 'Escape') el.curtain.hidden = true;
+  const k = ev.key;
+  const low = k.toLowerCase();
+  // System keys answer in every state — a muted board is still muted while the curtain is up.
+  if (low === 'm') { ev.preventDefault(); toggleMute(); return; }
+  if (low === 'f') { ev.preventDefault(); toggleFullscreen(); return; }
+  if (low === 'h' || k === '?') { ev.preventDefault(); toggleHelp(); return; }
+  if (low === 'p' || k === ' ' || k === 'Spacebar') {
+    ev.preventDefault();
+    if (app.helpOpen) setHelp(false);
+    else togglePause();
     return;
   }
-  if (ev.key === 'Escape') {
-    // Escape means "this row, all of it, never mind" — the one use of core's clearDraft.
-    if (g.draft.length) {
+  if (k === 'Escape') {
+    // Escape dismisses whatever is on top; only with nothing open does it mean "this row, all of
+    // it, never mind" — the one use of core's clearDraft.
+    if (app.helpOpen) { setHelp(false); return; }
+    if (!el.pausecard.hidden) { setPaused(false); render('继续 · 回到牌桌'); return; }
+    if (!el.curtain.hidden) { el.curtain.hidden = true; return; }
+    const g = app.game;
+    if (g && playing() && g.draft.length) {
       clearDraft(g);
       view.setGame(g);
       render(`这一行清空了 · 码本还是 ${g.cands.length} 个候选`);
     }
     return;
   }
-  if (ev.key >= '1' && ev.key <= String(SPACE.C)) {
-    put(g, Number(ev.key) - 1);
-    view.setGame(g);
-    render(`这行 ${g.draft.length}/${SPACE.L}`);
-  } else if (ev.key === 'Backspace') {
-    take(g);
-    view.setGame(g);
-  } else if (ev.key === 'Enter') {
+  if (!playing()) return;
+  const g = app.game;
+  if (!g) return;
+  if (low === 'r') { ev.preventDefault(); restart(); return; }
+  if (g.done) return;
+  if (k >= '1' && k <= String(SPACE.C)) {
+    if (put(g, Number(k) - 1)) {
+      audio.play('put', Number(k) - 1);
+      view.setGame(g);
+      render(`这行 ${g.draft.length}/${SPACE.L}`);
+    }
+  } else if (k === 'Backspace') {
+    ev.preventDefault();
+    el.take.click();
+  } else if (k === 'Enter') {
+    ev.preventDefault();
     commit();
-  } else if (ev.key.toLowerCase() === 'u') {
+  } else if (low === 'u') {
     el.undo.click();
-  } else if (ev.key.toLowerCase() === 'h') {
+  } else if (low === 't') {
     el.hint.click();
-  } else if (ev.key.toLowerCase() === 'r') {
-    el.restart.click();
   }
 });
 
 view = createView(el.canvas, {
   space: SPACE,
   onPalette(c) {
+    if (!playing()) return;
     const g = app.game;
     if (put(g, c)) {
+      audio.play('put', c);
       view.setGame(g);
       render(g.draft.length === SPACE.L ? '按“提交这一行”，或点 peg 拿掉一枚' : `这行 ${g.draft.length}/${SPACE.L}`);
     } else {
+      audio.play('illegal');
       render('<span class="warn">这行满了，先提交或先拿掉一枚</span>');
     }
   },
   onPeg(col) {
+    if (!playing()) return;
     const g = app.game;
     if (col < g.draft.length) {
       g.draft.splice(col, 1);
+      audio.play('take');
       view.setGame(g);
       render(`拿掉第 ${col + 1} 枚`);
     }
   },
   onRow(row) {
+    if (!playing()) return;
     const r = app.game.rows[row];
     if (r) render(`第 ${row + 1} 行：${SPACE.format(r.guess)} → ${r.black} 黑 ${r.white} 白 · 当时剩 ${r.left} 个候选`);
   },
 });
+// The OS preference and the save file are both read before the first frame, so the board never
+// animates once under reduce-motion and the speaker icon never claims sound is on when it is not.
+view.setReducedMotion(app.reducedMotion);
+setMuted(app.muted);
 
-// No rAF loop of its own: the view animates the newest row and then stops. The shell drives the
-// first measure explicitly so the board is drawn before any test probes a point on it.
+// The view owns one dt-driven rAF loop that parks itself once the row has landed and the desk has
+// stopped breathing; the shell drives the first measure explicitly so the board is drawn before
+// any test probes a point on it.
 apply();
 
 // Installable, but only where a service worker is legal. Over file:// (a double-clicked
@@ -429,6 +634,18 @@ window.tango = {
       curtain: !el.curtain.hidden,
       line: el.hintline.textContent,
       day: app.day,
+      // System state, because "is pause real?" is only answerable from the outside: `paused` has
+      // to agree with `view.clock` standing still and the AudioContext being suspended.
+      paused: app.paused,
+      muted: app.muted,
+      audio: audio.state,
+      voices: audio.voicesCreated,
+      fullscreen: app.fullscreen,
+      help: app.helpOpen,
+      pausecard: !el.pausecard.hidden,
+      reducedMotion: app.reducedMotion,
+      sw: app.sw,
+      view: view.stats(),
     };
   },
   get pool() { return poolStats(); },
@@ -466,4 +683,12 @@ window.tango = {
   },
   store,
   els: el,
+  // The system controls, callable exactly as a click calls them — a harness that reached for
+  // `el.pause.click()` would get the same thing, and this says which one is the contract.
+  togglePause() { return togglePause(); },
+  toggleMute() { return toggleMute(); },
+  toggleFullscreen() { return toggleFullscreen(); },
+  toggleHelp() { return toggleHelp(); },
+  frames() { return view.stats(); },
+  audioState() { return { state: audio.state, voices: audio.voicesCreated, muted: audio.muted }; },
 };

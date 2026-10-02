@@ -140,6 +140,9 @@ export function reset(game) {
   game.cands = game.book.slice();
   game.rows = [];
   game.draft = [];
+  // `hints` belongs to the run, not to the lot: leaving it set made a restart inherit the
+  // previous attempt's tally and report it against a fresh board.
+  game.hints = 0;
   game.done = false;
   game.won = false;
   game.failed = false;

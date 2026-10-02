@@ -35,6 +35,12 @@
     <button type="button" data-mode="daily">每日</button>
     <button type="button" data-mode="random">随机</button>
   </nav>
+  <div class="sysbar" id="sysbar" aria-label="系统">
+    <button type="button" id="pause" aria-label="暂停" title="暂停 (P)">⏸</button>
+    <button type="button" id="mute" aria-label="静音" aria-pressed="false" title="静音开关 (M)">🔊</button>
+    <button type="button" id="fullscreen" aria-label="全屏" title="全屏 (F)">⛶</button>
+    <button type="button" id="help" aria-label="玩法说明" title="玩法说明 (H)">?</button>
+  </div>
   <p class="totals" id="totals"></p>
 </header>
 
@@ -50,6 +56,32 @@
         <div class="curtain-actions">
           <button type="button" id="again">再来一次</button>
           <button type="button" id="next" class="primary">下一关</button>
+        </div>
+      </div>
+    </div>
+    <div class="curtain" id="pausecard" hidden>
+      <div class="curtain-card">
+        <p class="stars">⏸</p>
+        <h2>已暂停</h2>
+        <p class="tally">牌桌停在原处：动画、码桌漂移与音效全部冻结，恢复后不补跑这段时间。</p>
+        <div class="curtain-actions">
+          <button type="button" id="resume" class="primary">继续（P）</button>
+        </div>
+      </div>
+    </div>
+    <div class="curtain" id="helpcard" hidden>
+      <div class="curtain-card help-card">
+        <h2>玩法说明</h2>
+        <ol class="howto">
+          <li>码本里藏着一个 <b>4 位密码</b>，每一位是 6 种颜色之一。秘密一定在码本内，但你可以猜全盘 1296 个码里的任何一个。</li>
+          <li>点下方色板（或按 <code>1</code>–<code>6</code>）往当前行放 peg，点已放的 peg 拿掉，<code>退枚</code>/<code>Backspace</code> 退最后一枚。凑满 4 枚才能提交。</li>
+          <li>每行右侧的 2×2 格子是反馈，<b>黑钉先填、白钉后填</b>：<b>黑钉</b> = 颜色对、位置也对；<b>白钉</b> = 颜色对但位置不对。没填的格子留成空槽。</li>
+          <li>四个数：码本 <code>|S|</code> 是秘密可能藏身的地方；<code>下界</code> 是 <code>ceil(log_R |S|)</code>，只数反馈能带多少信息，是任何策略都逃不掉的天花板；<code>精确值</code> 是极小极大搜索量出来的最坏情况必破次数；<code>剩余候选</code> 是和已有反馈不矛盾的码数。</li>
+          <li>用不超过精确值的次数破码＝打平搜索，三星。十行用完还没破，密码还在——按重开再来。</li>
+        </ol>
+        <p class="keys"><b>1</b>–<b>6</b> 放 peg · <b>Enter</b> 提交 · <b>Space</b>/<b>P</b> 暂停 · <b>R</b> 重开 · <b>U</b> 撤销 · <b>T</b> 提示 · <b>M</b> 静音 · <b>F</b> 全屏 · <b>Esc</b> 清空本行 · <b>H</b>/<b>?</b> 本说明</p>
+        <div class="curtain-actions">
+          <button type="button" id="helpclose" class="primary">开始破码</button>
         </div>
       </div>
     </div>

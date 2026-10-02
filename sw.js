@@ -10,7 +10,7 @@
 // The game is a static ES-module build with no server state, so "offline" is a real feature here:
 // the codebook pool ships in js/data/lots.js and the save file is localStorage.
 
-const VERSION = 'tango-cos-v2';
+const VERSION = 'tango-cos-v3';
 const SHELL = [
   './',
   './index.html',
@@ -18,6 +18,7 @@ const SHELL = [
   './css/game.css',
   './js/main.js',
   './js/view.js',
+  './js/audio.js',
   './js/core/codes.js',
   './js/core/game.js',
   './js/core/library.js',
