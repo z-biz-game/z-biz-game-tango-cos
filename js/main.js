@@ -382,6 +382,19 @@ view = createView(el.canvas, {
 // first measure explicitly so the board is drawn before any test probes a point on it.
 apply();
 
+// Installable, but only where a service worker is legal. Over file:// (a double-clicked
+// index.html, or any shell that forgot an origin) the registration either rejects or starts
+// caching a directory listing, so it is skipped outright — and the rejection is swallowed here
+// rather than left to surface as an uncaught error on every desktop open.
+function registerShell() {
+  if (!('serviceWorker' in navigator)) return Promise.resolve(false);
+  if (location.protocol !== 'http:' && location.protocol !== 'https:') return Promise.resolve(false);
+  return navigator.serviceWorker.register('sw.js')
+    .then(() => true, () => false);
+}
+app.sw = false;
+registerShell().then((ok) => { app.sw = ok; });
+
 window.tango = {
   version: 1,
   get state() {

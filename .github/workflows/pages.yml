@@ -20,14 +20,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # No bundler and no dependencies: the game ships plain ES modules, so the site is a file
-      # copy. ONLY these three paths are reachable from index.html — keep server.cjs, the
-      # electron shell, the generator (tools/) and the tests (test/) out of the artifact. Copying
-      # the whole repo (path: .) would ship the bake pipeline and node-only modules to a browser.
+      # copy. Only what index.html can actually request is reachable — css, js, the generated
+      # bitmaps under assets/img, the manifest and the service worker. Keep server.cjs, the
+      # electron shell, the generator (tools/), the asset source (assets/gen) and the tests
+      # (test/) out of the artifact; copying the whole repo (path: .) would ship the bake
+      # pipeline and node-only modules to a browser.
       - name: Assemble static site
         run: |
           mkdir _site
-          cp index.html _site/
+          cp index.html manifest.webmanifest sw.js _site/
           cp -r css js _site/
+          mkdir -p _site/assets
+          cp -r assets/img _site/assets/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

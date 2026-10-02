@@ -1,0 +1,24 @@
+{
+  "name": "破码 TANGO",
+  "short_name": "破码",
+  "description": "猜出藏在码本里的密码。每一关的“几次必破”都是极小极大搜索量出来的，屏幕上同时印着码本大小、信息下界与精确值。",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#101217",
+  "theme_color": "#101217",
+  "lang": "zh-CN",
+  "categories": ["games", "puzzle"],
+  "icons": [
+    { "src": "assets/img/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/img/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/img/icon-1024.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any" },
+    { "src": "assets/img/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "继续战役", "url": "./#/c/1", "description": "打开最近解锁的战役关卡" },
+    { "name": "每日破码", "url": "./#/daily", "description": "今天的码本，全设备同一本" }
+  ]
+}
