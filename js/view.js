@@ -45,6 +45,13 @@ export function createView(canvas, { space, onPalette, onPeg, onRow } = {}) {
   // centres, `peg` the drawn size, so a slot always has a visible gap inside a row.
   let geo = { peg: 30, pitch: 36, ox: PAD, oy: PAD, rowH: 44, fbX: 0, palY: 0, palR: 14, palX: PAD, w: 320, h: 320 };
   let anim = 0; // 0..1, the last row sliding in
+  let animT0 = 0; // performance.now() when the current row started sliding in
+  // The reveal used to advance 0.12 per FRAME, so it needed a fixed 8 frames: the same move
+  // landed in 267ms at 30Hz and 67ms at 120Hz — four times faster on a high-refresh display.
+  // ANIM_MS is that same 60Hz look (8 frames * 16.67ms) expressed as a duration, and the tick
+  // below advances by real elapsed time, so every refresh rate takes the same wall-clock time.
+  const ANIM_MS = 140;
+  const nowMs = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
   let raf = 0;
 
   function measure() {
@@ -256,7 +263,12 @@ export function createView(canvas, { space, onPalette, onPeg, onRow } = {}) {
 
   function tick() {
     raf = 0;
-    anim = Math.min(1, anim + 0.12);
+    // The one line that still eats frame dt. Clamped to 50ms so a backgrounded tab (rAF stops
+    // firing) resumes the reveal instead of snapping it to the end on the first frame back.
+    const now = nowMs();
+    const dt = animT0 ? Math.min(0.05, (now - animT0) / 1000) : 0;
+    animT0 = now;
+    anim = Math.min(1, anim + (dt * 1000) / ANIM_MS);
     draw();
     if (anim < 1) raf = window.requestAnimationFrame(tick);
   }
@@ -265,6 +277,7 @@ export function createView(canvas, { space, onPalette, onPeg, onRow } = {}) {
     setGame(g) {
       game = g;
       anim = 0;
+      animT0 = 0;   // re-arm the clock with the phase, or the first tick would inherit the last row's dt
       if (!raf) raf = window.requestAnimationFrame(tick);
       else draw();
     },
