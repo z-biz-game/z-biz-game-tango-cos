@@ -52,6 +52,12 @@ export function createView(canvas, { space, onPalette, onPeg, onRow } = {}) {
   // below advances by real elapsed time, so every refresh rate takes the same wall-clock time.
   const ANIM_MS = 140;
   const nowMs = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
+  // ---- 减弱动效（prefers-reduced-motion）----
+  // 刚落下的那一行会在 140ms 里由 0.6 缩放到 1.0（anim 驱动），是一段入场动画。
+  // 它不承载状态：那一行的数字、颜色与黑白反馈都另画在别处。减弱动效下**直接落到 1.0**，
+  // 也就是这一行一出现就是最终大小 —— 少的是"长出来"的过程，棋盘本身一字不少。
+  let reduceMotion = false;
   let raf = 0;
 
   function measure() {
@@ -268,12 +274,22 @@ export function createView(canvas, { space, onPalette, onPeg, onRow } = {}) {
     const now = nowMs();
     const dt = animT0 ? Math.min(0.05, (now - animT0) / 1000) : 0;
     animT0 = now;
-    anim = Math.min(1, anim + (dt * 1000) / ANIM_MS);
+    anim = reduceMotion ? 1 : Math.min(1, anim + (dt * 1000) / ANIM_MS);
     draw();
     if (anim < 1) raf = window.requestAnimationFrame(tick);
   }
 
   return {
+    // The gate the runtime pref flip lands on: idempotent, and snaps any in-flight reveal to
+    // its end state so the newest row does not keep growing after the setting changes.
+    setReduceMotion(v) {
+      const on = !!v;
+      if (on === reduceMotion) return reduceMotion;
+      reduceMotion = on;
+      if (reduceMotion && anim < 1) { anim = 1; animT0 = 0; draw(); }
+      return reduceMotion;
+    },
+    isReducedMotion: () => reduceMotion,
     setGame(g) {
       game = g;
       anim = 0;
