@@ -60,17 +60,32 @@
       <p class="chip-more" id="chipmore"></p>
     </details>
     <!--
-      玩法说明。下面每一条都对着 js/core/game.js 的 submit() / put() / take() 写，
-      不是照抄 README 的宣传语。改引擎规则时这个块要跟着改——它不是第二套规则。
+      玩法说明。下面每一条都对着 js/core/ 的实现写，不是照抄 README 的宣传语。
+      改引擎规则时这个块要跟着改——它不是第二套规则。出处点名到行：
+        · 4 位 peg、6 色、全盘 1296 码、15 种反馈 → codes.js:161 注释与 makeSpace()
+        · 秘密 ∈ 码本，但玩家可以猜码本以外的任何一个码 → make.js:93-95（"secret is a
+          member of the book"）+ minimax.js:8-10（guess 循环跑的是 WHOLE code space）
+          + game.js:5-7（"The codebook is knowledge, not a restriction"）
+        · 颜色从画布上调色盘点，不在「码本里还剩什么」那块 → view.js:39-52 画调色盘，
+          main.js:357-361 的 onPalette(c)；抽屉 #chips 装的是**候选码**，不是颜色
+        · 键盘 1–6 → main.js:338-341（put(g, Number(ev.key)-1)）；Backspace → take()
+        · 不满 4 位不能提交 → game.js submit() 90-92，返回 reason:'incomplete'
+        · 黑 peg＝颜色对且位置对；白 peg＝颜色对、位置错；只数个数不告诉哪一位
+          → codes.js score() 67-77（black 按位比，white = common - black）
+        · 黑 peg == 4 即胜 → game.js submit() 110（black === space.L）
+        · 用满 10 行未全黑即负 → game.js MAX_ROWS = 10（28 行）+ submit() 113-116
+        · 「剩余候选」是按全部反馈筛出的自洽集合，且计数恒为真值 → game.js submit() 98
+          （consistent()）+ candidatePreview() 213-218（"The count is always the true count"）
+        · 星级三档 → game.js grade() 202-208（rows 与 par 比）
     -->
     <details class="about">
       <summary>玩法：怎么猜、怎么算赢</summary>
-      <p><b>目标</b>：猜出那一枚密码。它有 4 位、每位 6 色，所有可能的密码都在这一关的码本里（码本大小是 <code>|S|</code>，秘密一定在里面）。</p>
-      <p><b>怎么猜</b>：从「码本里还剩什么」那块挑颜色，一位一位放进去；<b>必须凑满 4 位</b>才能提交，没凑满时提交会被拒（<code>submit()</code> 返回 <code>reason: 'incomplete'</code>）。键盘 <kbd>1</kbd>–<kbd>6</kbd> 直接放对应颜色。</p>
+      <p><b>目标</b>：猜出那一枚密码。它有 4 位、每位 6 色，全盘 6<sup>4</sup>＝1296 种。<b>秘密一定在这一关的码本里</b>（码本大小就是面板上的 <code>|S|</code>），但<b>码本不是限制</b>——你可以从画布上调色盘里挑颜色，猜这 1296 个码里的任何一个，不必是码本里的。</p>
+      <p><b>怎么猜</b>：点画布下方那排<b>颜色圆点</b>，一位一位放进这一行（左侧「码本里还剩什么」那块列的是<b>还可能的密码</b>，不是给你挑颜色的）；<b>必须凑满 4 位</b>才能提交，没凑满时提交会被拒（<code>submit()</code> 返回 <code>reason: 'incomplete'</code>）。键盘 <kbd>1</kbd>–<kbd>6</kbd> 直接放对应颜色，<kbd>Backspace</kbd> 退掉刚放的一枚，<kbd>Esc</kbd> 把这一行整行清空。</p>
       <p><b>反馈怎么读</b>：每次提交给两颗 peg——<b>黑</b>是颜色对、位置也对；<b>白</b>是颜色对、位置错。两者都只数数量，不告诉你具体是哪一位。</p>
-      <p><b>怎么算赢</b>：<b>黑 peg 等于 4</b>就算赢（<code>submit()</code> 里 <code>if (black === space.L)</code>，<code>L</code> 就是位数）。<b>用满 10 行还没全黑就算输</b>（<code>MAX_ROWS = 10</code>，<code>js/core/game.js:28</code>）。</p>
-      <p><b>两个让你少走弯路的按钮</b>：<b>撤销</b>退掉已提交的一行，<b>重来</b>把这一关清回开局。「还剩 <code>N</code> 枚」那一栏是引擎按你已收到的全部反馈筛出来的<b>仍然自洽</b>的候选密码数——不是估计，是与你走过的每一步都不矛盾的集合大小。</p>
-      <p><b>这个游戏真正的难点</b>不是"猜中"，而是"<b>无论密码是哪一枚，我最多还要猜几次</b>"。面板上那个 <code>精确值</code> 就是这个最坏情况保证值：它是 <code>js/core/minimax.js</code> 极小极大搜出来的，不是人觉得像几分难；<code>下界</code> 是 <code>ceil(log_R |S|)</code>，只数反馈能带多少信息算出来的天花板。两者同时成立，提示按钮才敢对你说"还需 N 次"。</p>
+      <p><b>怎么算赢</b>：<b>黑 peg 等于 4</b>就算赢（<code>submit()</code> 里 <code>if (black === space.L)</code>）。<b>用满 10 行还没全黑就算输</b>（<code>MAX_ROWS = 10</code>，<code>js/core/game.js:28</code>）。<b>星级</b>按已用行数与面板「精确值」比：正好打平是 ★★★「当庭破码」，多一行 ★★「迟一步」，再多 ★「硬撬开的」。</p>
+      <p><b>两个让你少走弯路的按钮</b>：<b>撤销</b>退掉已经提交的一行（<code>u</code>），<b>重开</b>把这一关清回开局（<code>r</code>）。面板上那个<b>剩余候选</b>是引擎按你已收到的全部反馈筛出来的<b>仍然自洽</b>的候选密码数——不是估计，它和你走过的每一步都不矛盾。</p>
+      <p><b>这个游戏真正的难点</b>不是"猜中"，而是"<b>无论密码是哪一枚，我最多还要猜几次</b>"。面板上那个 <code>精确值</code> 就是这个最坏情况保证值：它是 <code>js/core/minimax.js</code> 极小极大搜出来的，不是人觉得像几分难；<code>下界</code> 是 <code>ceil(log_R |S|)</code>，只数反馈能带多少信息算出来的天花板。走<b>提示</b>时，只有当这一步的分支在构建期算过，它才敢报"之后最多还需 N 次"；没算过就只给一个收得最快的猜法并照实说"不保证精确值"。</p>
     </details>
     <details class="about">
       <summary>这一关的数字从哪来</summary>
