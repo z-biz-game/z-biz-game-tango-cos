@@ -21,7 +21,7 @@ jobs:
         with:
           node-version: 22
       - name: Syntax
-        run: for f in js/*.js js/*/*.js server.cjs electron/main.cjs tools/*.mjs test/*.mjs; do node --check "$f"; done
+        run: npm run check
       - name: Suites
         # library.test.mjs is the one that matters: it re-solves every lot in js/data/lots.js
         # from the serialised book, so a hand-edited value or a stale bake fails the build here.
