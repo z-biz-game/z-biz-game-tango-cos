@@ -88,7 +88,7 @@ node -e "import('./js/core/library.js').then(m => console.log(m.stats().byTier))
 这条腿自己新增判据之后，下一次 run 会打出新的数。
 
 CI 里的那一次是同一个口径：run 37738665000（2026-10-08 那一笔，unit job 113183988038，10 个步骤、
-日志 24828 字节）的 `npm run unit` 步骤里打出同一行清点，并交回 `RESULT docs-test ok=true checks=9 fails=0`。
+日志 26411 字节，按 `/actions/jobs/113183988038/logs` 当场取回）的 `npm run unit` 步骤里打出同一行清点，并交回 `RESULT docs-test ok=true checks=9 fails=0`。
 
 ## 规则
 
