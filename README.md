@@ -82,6 +82,9 @@ node -e "import('./js/core/library.js').then(m => console.log(m.stats().byTier))
 跑没跑到由那一次 run 的读数说。本轮（2026-10-08，本机一次 `node test/docs.test.mjs`）：3 份文档 ·
 32 条引用 · 7 条带指认 · 0 条续引 · 0 条跨仓，`rows: 9 fail: 0`。
 
+CI 里的那一次是同一个口径：run 37738665000（2026-10-08 那一笔，unit job 113183988038，10 个步骤、
+日志 24828 字节）的 `npm run unit` 步骤里打出同一行清点，并交回 `RESULT docs-test ok=true checks=9 fails=0`。
+
 ## 规则
 
 - 4 个位置（`L`）、6 种颜色（`C`）→ 4^… 实为 6^4 = 1296 枚码（`N`）；反馈黑+白共 15 种（`R`）。
