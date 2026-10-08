@@ -25,7 +25,7 @@ value(S) = |S| ≤ 1 ? |S| : 1 + min_g  max_f  value(S_f(g))
 ### 1.1 为什么这个 value 能被"外部定理"交叉检查
 
 `value(S) ≥ 1 + ⌈log_R |S|⌉`（`js/core/codes.js:156` `valueFloor`），而 `⌈log_R |S|⌉`
-（`:127` `infoBound`）是纯信息论：每次反馈有 R=15 种，最多把候选集缩到 1/15。这两层下界**不进
+（`js/core/codes.js:127` 的 `infoBound`）是纯信息论：每次反馈有 R=15 种，最多把候选集缩到 1/15。这两层下界**不进
 搜索**，是站在搜索外面验它的：`tools/bake.mjs` 断言每关 `again.value ≥ valueFloor ≥ infoBound`。
 一个把 `value` 算小的 bug，会先被这条定理抓，而不是上线后安静地少一步。
 
@@ -62,13 +62,13 @@ value(S) = |S| ≤ 1 ? |S| : 1 + min_g  max_f  value(S_f(g))
 
 ### 2.1 solver 1（`js/core/minimax.js`）用的三层剪枝，一破就退化成上面那堵墙
 
-搜索签名 `search(list, depth, limit)`（`:128`）。三条界：
+搜索签名 `search(list, depth, limit)`（`js/core/minimax.js:128`）。三条界：
 
-- **FLOOR**（`:131`）：`valueFloor(n) >= limit` 直接判死，一个分支都不展开——外部定理，几乎免费。
-- **CAP / 容量界**（`:166`）：一个猜法 `g` 要能"打平 `best`"，其每个反馈子集都要 `value ≤ best-2`，
+- **FLOOR**（`js/core/minimax.js:131`）：`valueFloor(n) >= limit` 直接判死，一个分支都不展开——外部定理，几乎免费。
+- **CAP / 容量界**（`js/core/minimax.js:166`）：一个猜法 `g` 要能"打平 `best`"，其每个反馈子集都要 `value ≤ best-2`，
   由容量论 `|子集| ≤ capacity(best-2) = R^(best-4)`；子集按最大分支尺寸升序访问，一旦超过容量就
   `break`。这就是 builder 说的 sharpened bound：`|S| ≤ R^(k-1)` 是把"还能不能小于 k"变成一次计数。
-- **BOUNDS / fail-high 有界递归**（`:121-135`）：问子节点的不是"你的值是多少"，而是"你能不能压在
+- **BOUNDS / fail-high 有界递归**（`js/core/minimax.js:121-135`）：问子节点的不是"你的值是多少"，而是"你能不能压在
   `limit` 以下"。压不住就返回 `limit`（fail-high）。**只有严格小于 limit 的确切值才写进 memo**——
   把不精确的上界缓下去会污染同一个子集在别处的查询。这正是让 500 档从"跑不完"变成 1.4 秒的东西。
 
@@ -78,7 +78,7 @@ value(S) = |S| ≤ 1 ? |S| : 1 + min_g  max_f  value(S_f(g))
 ### 2.2 修复 witness 与"策略表闭合"
 
 fail-high 只保证 `value` 数对，不自动保证**能报出那一步猜法**。若最优猜法是在剪枝边界上被"计数"
-判出来的，`repairWitness`（`:202`）回头把它真正展开一次，补出可选的 `gStar`。只有 `value < limit`
+判出来的，`repairWitness`（`js/core/minimax.js:202`）回头把它真正展开一次，补出可选的 `gStar`。只有 `value < limit`
 且拿到了 witness，才写 policy 条目。`policyClosed(space, book, policy)`（导出）检查烘出去的表
 **闭合且严格下降**：对每个 ≥2 的子集，表里那一步猜法的每个反馈都指向另一条表项，且 `value` 单调
 变小——这就是"提示报的 N 次"为真的证明。`tools/bake.mjs:119` 每关跑它，不闭合就不入库。
@@ -86,7 +86,7 @@ fail-high 只保证 `value` 数对，不自动保证**能报出那一步猜法**
 ### 2.3 `BudgetError`：宁可说"没量出来"，绝不把"没量出来"当"量出来"
 
 `js/core/budget.js` 的守卫在节点/时间耗尽时抛 `BudgetError`（不是返回一个可疑值）。bake 把它当作
-"这本码本大到无法 certify"直接丢弃换下一本（`make.js:86`），绝不发布一个没证到的 `value`。
+"这本码本大到无法 certify"直接丢弃换下一本（`js/core/make.js:89`），绝不发布一个没证到的 `value`。
 `test/minimax.test.mjs` 有专门一条断言这条红线。
 
 ---
@@ -110,7 +110,7 @@ shipped 代码 import**；`js/main.js` 用的 `js/core/library.js` 只是查表 
 ### 3.3 单候选子集在策略表里"没有条目"是构造事实，不是 bug
 
 policy 只为 `|S| ≥ 2` 的子集而存在（`value` 的定义就是 ≥2 才要"再猜"）。玩家若走到只剩 1 个候选，
-`hint` 落 `bestSplit` 兜底并诚实标 `exact:false, left:null`（`game.js:172`）。UI 不得把这种兜底
+`hint` 落 `bestSplit` 兜底并诚实标 `exact:false, left:null`（`js/core/game.js:172`）。UI 不得把这种兜底
 包装成"策略表说的精确 N 次"。`test/game.test.mjs` 与 `@pointer` 的收尾一猜都断言了这个 `exact`
 字段的真伪。
 
@@ -124,7 +124,7 @@ policy 只为 `|S| ≥ 2` 的子集而存在（`value` 的定义就是 ≥2 才�
 
 `node --test test/*.test.mjs` 能直接 import 核心（无 `window`），`tools/playtest.mjs` 能从真实鼠标
 事件驱动同一个 `commit()`。任何一处让 `js/core` 摸到 `window`，第一套立刻瘫。`js/core/storage.js`
-用 `persistent()`（`:147`）检测无 `window` 时退化，正是为了这条边界可测。
+用 `persistent()`（`js/core/storage.js:147`）检测无 `window` 时退化，正是为了这条边界可测。
 
 ---
 
@@ -136,7 +136,7 @@ policy 只为 `|S| ≥ 2` 的子集而存在（`value` 的定义就是 ≥2 才�
 `policy` 是 `[[maskHex, guess, value], …]`：子集位掩码（BigInt 压成 hex）→ 搜索选的猜法 → 那一步
 之后精确剩余次数。
 
-进池子的硬条件（`bake.mjs:72-124`，每条是脚本里的 assert 不是愿望）：从 `book` 数组用**全新求解器**
+进池子的硬条件（`tools/bake.mjs:72-124`，每条是脚本里的 assert 不是愿望）：从 `book` 数组用**全新求解器**
 复解得同一 `value`；`value ≥ floor ≥ bound`；`value` 恰等于档带；`secret ∈ book`；`validateBook`；
 `policyClosed` 闭合。`test/library.test.mjs` 在 CI 里把入库文件**再**逐关复解，手改一个数字即红。
 
@@ -150,10 +150,10 @@ policy 只为 `|S| ≥ 2` 的子集而存在（`value` 的定义就是 ≥2 才�
 `tango.save.v1`（`js/core/storage.js`），版本化逐字段兜底，`window.localStorage` **会抛**（无痕、
 被挡第三方存储、嵌入 webview）——所有访问 try/catch，失败退化为内存会话（`persistent()===false`）。
 
-- **`best` 只会变小**（`solve`，`:103`）：重玩打出更差成绩不能擦掉更好的纪录。
-- **`unlock` 只会变大**（`:78`）：回玩第 3 关不能把第 9 关重新藏起来。
+- **`best` 只会变小**（`js/core/storage.js:103` 的 `solve`）：重玩打出更差成绩不能擦掉更好的纪录。
+- **`unlock` 只会变大**（`js/core/storage.js:78`）：回玩第 3 关不能把第 9 关重新藏起来。
 - **达到精确值**的旗标一旦点亮不因更差的重玩熄灭（`par: won && guesses<=par || prev.par`）。
-- 清档是全仓唯一破坏性操作 → 两次点击（`main.js:307`），`@save` 断言"第一次只上膛"。
+- 清档是全仓唯一破坏性操作 → 两次点击（`js/main.js:307`），`@save` 断言"第一次只上膛"。
 
 `test/storage.test.mjs` 在 node 里跑（无 window → 内存退化路径），`@save` 在真实浏览器里跑
 localStorage 落盘路径，同一批不变式两层各验一遍。
@@ -175,8 +175,8 @@ palette 真落下四 peg、满行点击弹回（`/满了/`）、退一枚只抬�
 ### 6.1 verify.sh 与 playtest.mjs 里被坑逼出来的处理
 
 1. Chrome 用 `mktemp -d` 独立 profile；轮询 `/json/version` **和** web 根两个端点都活才开始
-   （`verify.sh:52-63`），否则首次 navigate 撞在半启动端口。
-2. 导航之后**等 shell 不等秒表**：`waitShell()` 轮询 `window.tango.state.id`（`playtest.mjs:97`），
+   （`tools/verify.sh:52-63`），否则首次 navigate 撞在半启动端口。
+2. 导航之后**等 shell 不等秒表**：`waitShell()` 轮询 `window.tango.state.id`（`tools/playtest.mjs:97-103`），
    固定 sleep 在本地像没事、Pages 上把 canvas 留在未样式 300×150。
 3. `trap cleanup EXIT` 里 `kill` 完必须 `wait` 两个后台 PID，外加看门狗 `( sleep WD_TIMEOUT; cleanup )`
    并把 fd 重定向走——否则看门狗子 shell 攥住 stdout 让流水线卡到超时。
@@ -189,8 +189,8 @@ palette 真落下四 peg、满行点击弹回（`/满了/`）、退一枚只抬�
 - `@pointer` 起手 `t.load('#/lot/glance-01')` 后**同一 tick 读 `state.id`** 拿到的是上一个套件（@save）
   留下的每日关。因为 `go()` 走 `hashchange` 异步生效。修法是加载后**有界轮询**状态 id 到 `glance-01`
   为止（`playtest.mjs` fresh 段），与 @routes 里的 `await sleep` 同一道理。
-- 通关后 `el.submit.disabled = g.done`（`main.js:154`）且幕布 `inset:0` 盖住按钮、键盘 `Enter` 在
-  `g.done` 时提前返回（`main.js:325`）——三重终局锁。**没有**一条真实事件能让终局后打印 `已经结束`。
+- 通关后 `el.submit.disabled = g.done`（`js/main.js:154`）且幕布 `inset:0` 盖住按钮、键盘 `Enter` 在
+  `g.done` 时提前返回（`js/main.js:325`）——三重终局锁。**没有**一条真实事件能让终局后打印 `已经结束`。
   因此把该断言从"点击 submit 会说已经结束"改成可证伪的真值：submit 已 `disabled` 且点击不计费
   （`over.g === 2 && won === true`）。核心 `submit()` 的 `reason:'over'` 守卫仍在 `test/game.test.mjs`
   的 node 层证明——两层各司其职，而不是把浏览器断言写成假象去迎合。

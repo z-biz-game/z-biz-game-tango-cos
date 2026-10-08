@@ -26,14 +26,14 @@ npx electron .             # 桌面壳（需先自行 npm i -D electron）
 游戏里没有手写关卡，也没有"简单/中等/困难"这种字符串。链条是这样的：
 
 1. `js/core/make.js` 从 1296 枚码里随机抽 `|S|` 枚组成一本**码本**（codebook，候选集合 S），
-   唯一的过滤器是 `js/core/minimax.js` 量出来的 `value` 是否落在档位区间内——难度不由构造方式
+   唯一的过滤器是 `js/core/minimax.js` 量出来的 `value` 是否等于档位值（`js/core/make.js:92` 的 `tier.value`）——难度不由构造方式
    规定，只由测量结果决定，这才使数字诚实。
 2. `tools/bake.mjs` 在构建期跑它，把每关的 `book` 序列化，然后**从序列化结果重新解一遍**；只有
    复现出同一个 `value` 的关卡才写进 `js/data/lots.js`，并附带搜索选出的**策略表**（`policy`）。
-   数字对不上直接抛错，不降级。
+   数字对不上直接抛错，不降级（`tools/bake.mjs:98` 的 `not reproducible`）。
 3. `test/library.test.mjs` 在每次 CI 里把 `js/data/lots.js` 逐关、用全新求解器再解一遍，并双向
    证明这个 `value` 卡得死死的：`canBreakIn(book, value-1)` 必须失败、`canBreakIn(book, value)`
-   必须成功。手改一个 `value` 字段，构建就红。
+   必须成功（`test/library.test.mjs:91` 的 `canBreakIn`）。手改一个 `value` 字段，构建就红。
 
 所以浏览器永远不分析码本，只从池子里挑一关、然后把候选列表越点越小。这不是洁癖：见下面的实测，
 围城档一枚码本要 2 秒以上才能 certify，这个成本放在构建期是免费的，放在玩家点一下屏幕之后是灾难。
@@ -75,6 +75,12 @@ node -e "import('./js/core/library.js').then(m => console.log(m.stats().byTier))
 `test/codes.test.mjs` 与 `test/game.test.mjs` 的期望值不是从被测代码里读回来的：反馈元组、
 通关次数都是**手算**写死在 fixture 里（见 `test/fixture.mjs` 的手推注释）。求解器不能给自己出题
 再给自己打分。
+
+文档里印着的每个行号都由 `test/docs.test.mjs` 读回真文件对账：整词锚点、被指的那几行不许整段是
+空白、跨仓引用只数不判。这条腿住在 `test/` 下，所以 `npm run unit` 那条 glob 自动扫到它，`npm test`、
+`bash tools/verify.sh` 的单元段与 `.github/workflows/ci.yml:28` 的 `npm run unit` 都会跑到它——那是接线，
+跑没跑到由那一次 run 的读数说。本轮（2026-10-08，本机一次 `node test/docs.test.mjs`）：3 份文档 ·
+32 条引用 · 7 条带指认 · 0 条续引 · 0 条跨仓，`rows: 9 fail: 0`。
 
 ## 规则
 
