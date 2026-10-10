@@ -1,93 +1,56 @@
-// Offline shell for 破码 TANGO.
+'use strict';
+// 离线可用 + 永不被旧缓存钉住。
 //
-// NETWORK-FIRST for every same-origin subresource. A hand-written VERSION plus cache-first is how
-// a deploy ends up serving a new index.html against old js/main.js — the HTML is not cached, the
-// module graph is, and the page then dies in a way that only reproduces on the second visit. So
-// the network always answers when it can, and the cache is only the fallback that keeps a
-// installed PWA playable on a plane. VERSION exists to name the cache and to retire the old one,
-// not to decide who answers a request.
-//
-// The game is a static ES-module build with no server state, so "offline" is a real feature here:
-// the codebook pool ships in js/data/lots.js and the save file is localStorage.
+// 两条实测换来的口径：
+//   1) 一律 **网络优先**，命中网络才回填缓存。手工 VERSION + cache-first 的组合，
+//      发出去的 HTML 会配上上一版的 js/css，出一个"新界面配旧逻辑"的鬼状态，
+//      而且玩家自己无法恢复（只能等缓存过期）。
+//   2) 缓存名带版本号（activate 时清掉非本版的名字）。改版**不需要**同步 bump：
+//      同名文件重绘之后，网络优先这一条保证客户端下一次联网就拿到新字节。
+const VERSION = 'tango-cos-v1';
+const CACHE = `${VERSION}-shell`;
+const PRECACHE = ['index.html', 'manifest.webmanifest'];
 
-const VERSION = 'tango-cos-v3';
-const SHELL = [
-  './',
-  './index.html',
-  './manifest.webmanifest',
-  './css/game.css',
-  './js/main.js',
-  './js/view.js',
-  './js/audio.js',
-  './js/core/codes.js',
-  './js/core/game.js',
-  './js/core/library.js',
-  './js/core/storage.js',
-  './js/core/rng.js',
-  './js/core/decide.js',
-  './js/core/minimax.js',
-  './js/core/book.js',
-  './js/core/make.js',
-  './js/core/table.js',
-  './js/core/budget.js',
-  './js/data/lots.js',
-  './assets/img/pegboard.png',
-  './assets/img/icon-192.png',
-  './assets/img/icon-512.png',
-  './assets/img/apple-touch-icon.png',
-  './assets/img/icon-16.png',
-  './assets/img/icon-32.png',
-];
-
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(VERSION)
-      // One missing file must not abort the whole precache: `allOrNothing` is the default of
-      // Promise.all, and a partial cache still leaves the game playable offline.
-      .then((cache) => Promise.allSettled(SHELL.map((url) => cache.add(url))))
-      .then(() => self.skipWaiting())
+self.addEventListener('install', (ev) => {
+  // 首屏两件套先抓下来：断网时至少能打开界面，而不是浏览器的错误页。
+  ev.waitUntil(
+    caches.open(CACHE).then((c) => c.addAll(PRECACHE).catch(() => {})).then(() => self.skipWaiting())
   );
 });
 
-self.addEventListener('activate', (event) => {
-  event.waitUntil((async () => {
-    const keys = await caches.keys();
-    await Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k)));
-    await self.clients.claim();
-  })());
+self.addEventListener('activate', (ev) => {
+  ev.waitUntil(
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.filter((k) => !k.startsWith(VERSION)).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim())
+  );
 });
 
-function sameOriginGet(request) {
-  if (request.method !== 'GET') return false;
-  try {
-    return new URL(request.url).origin === self.location.origin;
-  } catch (err) {
-    return false;
-  }
-}
+self.addEventListener('fetch', (ev) => {
+  const req = ev.request;
+  if (req.method !== 'GET') return;
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
 
-self.addEventListener('fetch', (event) => {
-  const request = event.request;
-  if (!sameOriginGet(request)) return;
-  event.respondWith((async () => {
-    let networkError = null;
-    try {
-      const fresh = await fetch(request);
-      if (fresh && fresh.ok && fresh.type !== 'opaque') {
-        const cache = await caches.open(VERSION);
-        cache.put(request, fresh.clone()).catch(() => { /* quota, opaque, or a blob response */ });
-      }
-      return fresh;
-    } catch (err) {
-      networkError = err;
-    }
-    const cached = await caches.match(request, { ignoreSearch: false });
-    if (cached) return cached;
-    // A navigation offline gets the shell, so an installed PWA still opens on the last build.
-    if (request.mode === 'navigate') {
-      const shell = await caches.match('./index.html');
-      if (shell) return shell;
-    }
-    throw networkError;
-  })());
+  ev.respondWith(
+    fetch(req)
+      .then((res) => {
+        if (res && res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(req, copy));
+        }
+        return res;
+      })
+      .catch(async () => {
+        const hit = await caches.match(req);
+        if (hit) return hit;
+        // 导航请求（地址栏/刷新/桌面图标）离线时回落到缓存的那份壳，不白屏。
+        if (req.mode === 'navigate') {
+          const shell = await caches.match('index.html');
+          if (shell) return shell;
+        }
+        return Response.error();
+      })
+  );
 });

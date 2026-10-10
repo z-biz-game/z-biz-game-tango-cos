@@ -26,14 +26,14 @@ npx electron .             # 桌面壳（需先自行 npm i -D electron）
 游戏里没有手写关卡，也没有"简单/中等/困难"这种字符串。链条是这样的：
 
 1. `js/core/make.js` 从 1296 枚码里随机抽 `|S|` 枚组成一本**码本**（codebook，候选集合 S），
-   唯一的过滤器是 `js/core/minimax.js` 量出来的 `value` 是否落在档位区间内——难度不由构造方式
+   唯一的过滤器是 `js/core/minimax.js` 量出来的 `value` 是否等于档位值（`js/core/make.js:92` 的 `tier.value`）——难度不由构造方式
    规定，只由测量结果决定，这才使数字诚实。
 2. `tools/bake.mjs` 在构建期跑它，把每关的 `book` 序列化，然后**从序列化结果重新解一遍**；只有
    复现出同一个 `value` 的关卡才写进 `js/data/lots.js`，并附带搜索选出的**策略表**（`policy`）。
-   数字对不上直接抛错，不降级。
+   数字对不上直接抛错，不降级（`tools/bake.mjs:98` 的 `not reproducible`）。
 3. `test/library.test.mjs` 在每次 CI 里把 `js/data/lots.js` 逐关、用全新求解器再解一遍，并双向
    证明这个 `value` 卡得死死的：`canBreakIn(book, value-1)` 必须失败、`canBreakIn(book, value)`
-   必须成功。手改一个 `value` 字段，构建就红。
+   必须成功（`test/library.test.mjs:91` 的 `canBreakIn`）。手改一个 `value` 字段，构建就红。
 
 所以浏览器永远不分析码本，只从池子里挑一关、然后把候选列表越点越小。这不是洁癖：见下面的实测，
 围城档一枚码本要 2 秒以上才能 certify，这个成本放在构建期是免费的，放在玩家点一下屏幕之后是灾难。
@@ -76,6 +76,20 @@ node -e "import('./js/core/library.js').then(m => console.log(m.stats().byTier))
 通关次数都是**手算**写死在 fixture 里（见 `test/fixture.mjs` 的手推注释）。求解器不能给自己出题
 再给自己打分。
 
+文档里印着的每个行号都由 `test/docs.test.mjs` 读回真文件对账：整词锚点、被指的那几行不许整段是
+空白、跨仓引用只数不判。这条腿住在 `test/` 下，所以 `npm run unit` 那条 glob 自动扫到它，`npm test`、
+`bash tools/verify.sh` 的单元段与 `.github/workflows/ci.yml:28` 的 `npm run unit` 都会跑到它——那是接线，
+跑没跑到由那一次 run 的读数说。本轮（2026-10-08，本机一次 `node test/docs.test.mjs`）：3 份文档 ·
+32 条引用 · 7 条带指认 · 0 条续引 · 0 条跨仓 · 文档行号对账 15 条判据，`rows: 15 fail: 0`。这六个数不再只是修辞：
+这条腿现在逐处对账，文档里凡印着这些标签的地方都必须等于本轮实数，**一处都没印同样要红**（读数从文档里消失了，
+闸不替一句不存在的话作证）。这一格自己也证明了会咬：2026-10-08 在带 `.git` 的副本上，三把只动文档、不代码一行都不碰的刀各自红了一次，
+且点名的正是对应那一条标签（引用数抄歪一格、把份数从文档里抹掉、判据数抄歪一格），跑完树复原。
+下面引的那次 CI run 打的是 `checks=9`——那是 D10 落地**之前**那一跑的真实读数，我没去改它；
+这条腿自己新增判据之后，下一次 run 会打出新的数。
+
+CI 里的那一次是同一个口径：run 37738665000（2026-10-08 那一笔，unit job 113183988038，10 个步骤、
+日志 26411 字节，按 `/actions/jobs/113183988038/logs` 当场取回）的 `npm run unit` 步骤里打出同一行清点，并交回 `RESULT docs-test ok=true checks=9 fails=0`。
+
 ## 规则
 
 - 4 个位置（`L`）、6 种颜色（`C`）→ 4^… 实为 6^4 = 1296 枚码（`N`）；反馈黑+白共 15 种（`R`）。
@@ -97,3 +111,52 @@ node -e "import('./js/core/library.js').then(m => console.log(m.stats().byTier))
 ## License
 
 MIT © 2026 z-biz-game
+
+## 上线的到底是哪一批文件
+
+这个仓没有打包器：站点=一次文件拷贝。以前「拷哪些」写在 `pages.yml` 的 `run:` 里（手抄的几行
+`cp`）。本地 `index.html` 直读仓库根，永远自洽；线上却按那份清单拷，于是页面后来引用的
+`manifest.webmanifest`、`sw.js`、`icons/*` 可能一个都没上去——线上 404，而仓里的引擎测试与
+真浏览器闸全绿，因为它们跑的都是仓库根，没有任何一步在「按清单拷」的那个环境下加载过页面。
+
+现在清单只有一份，住在 `tools/assemble-site.sh`：CI 调它拷 `_site`，本地闸调它拷临时目录，
+然后**对拷出来的产物**提要求（`tools/deploy-set.mjs`）：
+
+- **W 清单与页面同源**：`pages.yml` 里必须真有 `run: bash tools/assemble-site.sh <dir>` 这一行，
+  `ci.yml` 里必须真有 `run: node tools/deploy-set.mjs`。认的是调用那一行，不是文件里出现过这个
+  路径——注释里本来就会写它，只 grep 字符串会被一句散文喂绿。
+- **R 引用可达**：引用不靠手打名单。从 `index.html` 的 `href/src` 出发，凡解析出来是 `.js`/`.css`
+  的就把那一站也扫一遍（CSS 的 `url()`、JS 去掉注释后的 `'./…'` 字面量、`new URL(x, base)` 的两种
+  基、`navigator.serviceWorker.register`、`scope`），`manifest` 的 icons/screenshots/shortcuts 各自
+  的 `src` 也算引用。取径上读不到的那一站本身就是红（读不到＝这一站根本没扫）。每条引用都必须在
+  产物里且非 0 字节；绝对路径单列一条红，因为 Pages 挂在 `/<repo>/` 前缀下会跳出去。
+- **P 位图不许说谎**：`manifest` 声明的 `sizes` 必须等于 PNG IHDR 的真实宽高——文件图标读文件头，
+  内联成 base64 的图标先解码再读同一段。后一条不是可选项：图标可能住在清单里而不是盘上的 `.png`
+  （有的仓另有一条"零二进制文件"的承诺，那条只约束"有没有 .png 这个文件"）；如果 P 段只筛文件名，
+  声明写 512 而真图 192 就一路放行。
+- **钉住两个数**：R 段实际检查的路径条数（`25`）与这一次跑的断言条数（`43`），两个数
+  都钉在 `tools/deploy-set.mjs` 顶部的那对常量里。没改页面却掉了，说明解析断了；删掉一张图标会同时
+  少一条 R10 与那张的 P1/P2，所以两个数一起钉，断言条数能漂就是闸在缩水的信号。这一节故意只写数值、
+  不写那对常量的名字，也不写别仓文档闸的编号：有的仓的文档闸会拿"文档里出现过的同名标识号"回数它
+  自己的条数，还有的会把文档里点到的每个组编号逐个核对"这一轮真的发过"——两道闸共用一个名字，
+  或者在本仓的文档里出现一个本仓没有的组编号，打红的都是不相干的那一边。
+
+`tools/deploy-set-selftest.mjs` 是这两颗钉的阳性证明：它把仓库复制到临时目录，照着每一类断言
+各下一刀（X1 清单不收位图目录 / X2 模块边改名 / X3 CSS 写绝对路径 / X4 `start_url` 绝对 /
+X5 删光 >=512 图标 / X6 少一个必填字段 / X7 声明尺寸与真图不符 / X8 workflow 不调脚本 /
+X9 CI 不跑闸 / X10 是阴性对照——往入口 JS 追加一行只写在注释里的假路径，闸必须仍然绿、条数仍然
+`25`、断言仍然 `43`；X11 og:image 退回相对路径 / X12 og:image 的前缀指向别的 slug /
+X13 内联位图谎报尺寸——只在有靶子时下：X11/X12 要页面上那句 og:image，X13 要清单里真有一段 base64
+图标，没有就打印 SKIP；反过来 X1 没有位图目录可砍时改砍 css，P 段一位都不核时台架直接报靶子不够），
+要求每一刀都让闸**点名**变红。靶子从 `DEPLOY_SET_DUMP=1`
+的出处表现挑（取径真的会读的那支 JS / 那一张 CSS，不写死某一个仓的入口名），所以页面改了、仓与仓
+不同，台架跟着走。
+
+`node tools/deploy-set.mjs` 与 `node tools/deploy-set-selftest.mjs` 就是 CI 跑的那两条命令本身
+（package.json 里的 `deploy-set` / `deploy-set:selftest` 只是同一支脚本的 npm 入口）；本仓的整闸在 `tools/verify.sh` 的 `=== deploy-set ===` 那一段也各跑一次。它们红的时候并进本仓那条出口的退出码——这一条是这么证的：
+把 ci.yml 里那行 `run: node tools/deploy-set.mjs` 砍掉，本仓整闸必须点名红且退出码非 0。
+所以「本地全绿、线上 404 自己的 manifest / sw.js / 图标」这一类坏法在本地就会红。
+
+## 在线试玩
+
+<https://z-biz-game.github.io/z-biz-game-tango-cos/>（`main` 分支推送即自动部署）

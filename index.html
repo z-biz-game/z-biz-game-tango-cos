@@ -2,21 +2,10 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#101217">
-<meta name="description" content="破码 TANGO：猜出藏在码本里的密码。每一关的“几次必破”都是极小极大搜索量出来的，屏幕上同时印着码本大小、信息下界与精确值。">
-<meta property="og:type" content="website">
-<meta property="og:title" content="破码 TANGO">
-<meta property="og:description" content="一关的“几次必破”不是拍出来的：码本大小、信息下界、极小极大精确值同时印在屏幕上。">
-<meta property="og:image" content="assets/img/og.png">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="破码 TANGO">
-<meta name="twitter:description" content="难度是一个测量值：极小极大搜索量出来的必破次数。">
-<meta name="twitter:image" content="assets/img/og.png">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="破码">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="twitter:card" content="summary">
+<meta name="theme-color" content="#14161a">
+<meta name="description" content="破码 TANGO：猜出藏在码本里的密码。每一关的“几次必破”都是极小极大搜索量出来的，屏幕上同时印着码本大小、信息下界与精确值。"><meta property="og:title" content="破码 · TANGO"><meta property="og:description" content="破码 TANGO：猜出藏在码本里的密码。每一关的“几次必破”都是极小极大搜索量出来的，屏幕上同时印着码本大小、信息下界与精确值。"><meta property="og:image" content="https://z-biz-game.github.io/z-biz-game-tango-cos/icons/icon-512.png"><meta name="twitter:image" content="https://z-biz-game.github.io/z-biz-game-tango-cos/icons/icon-512.png">
+<link rel="icon" href="data:,">
 <title>破码 · TANGO</title>
 <link rel="icon" type="image/png" sizes="16x16" href="assets/img/icon-16.png">
 <link rel="icon" type="image/png" sizes="32x32" href="assets/img/icon-32.png">
@@ -26,6 +15,11 @@
 <link rel="apple-touch-icon" sizes="180x180" href="assets/img/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="css/game.css">
+
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
 </head>
 <body>
 <header class="topbar">
@@ -97,11 +91,40 @@
       <button type="button" id="hint">提示</button>
       <button type="button" id="restart">重开</button>
       <button type="button" id="share">分享</button>
+      <button id="btn-fullscreen" type="button" aria-pressed="false" title="全屏（F）">全屏</button>
     </div>
     <details class="drawer" id="drawer">
       <summary>码本里还剩什么 <span id="bookcount"></span></summary>
       <div class="chips" id="chips"></div>
       <p class="chip-more" id="chipmore"></p>
+    </details>
+    <!--
+      玩法说明。下面每一条都对着 js/core/ 的实现写，不是照抄 README 的宣传语。
+      改引擎规则时这个块要跟着改——它不是第二套规则。出处点名到行：
+        · 4 位 peg、6 色、全盘 1296 码、15 种反馈 → codes.js:161 注释与 makeSpace()
+        · 秘密 ∈ 码本，但玩家可以猜码本以外的任何一个码 → make.js:93-95（"secret is a
+          member of the book"）+ minimax.js:8-10（guess 循环跑的是 WHOLE code space）
+          + game.js:5-7（"The codebook is knowledge, not a restriction"）
+        · 颜色从画布上调色盘点，不在「码本里还剩什么」那块 → view.js:39-52 画调色盘，
+          main.js:357-361 的 onPalette(c)；抽屉 #chips 装的是**候选码**，不是颜色
+        · 键盘 1–6 → main.js:338-341（put(g, Number(ev.key)-1)）；Backspace → take()
+        · 不满 4 位不能提交 → game.js submit() 90-92，返回 reason:'incomplete'
+        · 黑 peg＝颜色对且位置对；白 peg＝颜色对、位置错；只数个数不告诉哪一位
+          → codes.js score() 67-77（black 按位比，white = common - black）
+        · 黑 peg == 4 即胜 → game.js submit() 110（black === space.L）
+        · 用满 10 行未全黑即负 → game.js MAX_ROWS = 10（28 行）+ submit() 113-116
+        · 「剩余候选」是按全部反馈筛出的自洽集合，且计数恒为真值 → game.js submit() 98
+          （consistent()）+ candidatePreview() 213-218（"The count is always the true count"）
+        · 星级三档 → game.js grade() 202-208（rows 与 par 比）
+    -->
+    <details class="about">
+      <summary>玩法：怎么猜、怎么算赢</summary>
+      <p><b>目标</b>：猜出那一枚密码。它有 4 位、每位 6 色，全盘 6<sup>4</sup>＝1296 种。<b>秘密一定在这一关的码本里</b>（码本大小就是面板上的 <code>|S|</code>），但<b>码本不是限制</b>——你可以从画布上调色盘里挑颜色，猜这 1296 个码里的任何一个，不必是码本里的。</p>
+      <p><b>怎么猜</b>：点画布下方那排<b>颜色圆点</b>，一位一位放进这一行（左侧「码本里还剩什么」那块列的是<b>还可能的密码</b>，不是给你挑颜色的）；<b>必须凑满 4 位</b>才能提交，没凑满时提交会被拒（<code>submit()</code> 返回 <code>reason: 'incomplete'</code>）。键盘 <kbd>1</kbd>–<kbd>6</kbd> 直接放对应颜色，<kbd>Backspace</kbd> 退掉刚放的一枚，<kbd>Esc</kbd> 把这一行整行清空。</p>
+      <p><b>反馈怎么读</b>：每次提交给两颗 peg——<b>黑</b>是颜色对、位置也对；<b>白</b>是颜色对、位置错。两者都只数数量，不告诉你具体是哪一位。</p>
+      <p><b>怎么算赢</b>：<b>黑 peg 等于 4</b>就算赢（<code>submit()</code> 里 <code>if (black === space.L)</code>）。<b>用满 10 行还没全黑就算输</b>（<code>MAX_ROWS = 10</code>，<code>js/core/game.js:28</code>）。<b>星级</b>按已用行数与面板「精确值」比：正好打平是 ★★★「当庭破码」，多一行 ★★「迟一步」，再多 ★「硬撬开的」。</p>
+      <p><b>两个让你少走弯路的按钮</b>：<b>撤销</b>退掉已经提交的一行（<code>u</code>），<b>重开</b>把这一关清回开局（<code>r</code>）。面板上那个<b>剩余候选</b>是引擎按你已收到的全部反馈筛出来的<b>仍然自洽</b>的候选密码数——不是估计，它和你走过的每一步都不矛盾。</p>
+      <p><b>这个游戏真正的难点</b>不是"猜中"，而是"<b>无论密码是哪一枚，我最多还要猜几次</b>"。面板上那个 <code>精确值</code> 就是这个最坏情况保证值：它是 <code>js/core/minimax.js</code> 极小极大搜出来的，不是人觉得像几分难；<code>下界</code> 是 <code>ceil(log_R |S|)</code>，只数反馈能带多少信息算出来的天花板。走<b>提示</b>时，只有当这一步的分支在构建期算过，它才敢报"之后最多还需 N 次"；没算过就只给一个收得最快的猜法并照实说"不保证精确值"。</p>
     </details>
     <details class="about">
       <summary>这一关的数字从哪来</summary>
@@ -119,5 +142,6 @@
 
 <p class="toast" id="toast" hidden></p>
 <script type="module" src="js/main.js"></script>
+  <script src="js/sw-register.js"></script>
 </body>
 </html>
