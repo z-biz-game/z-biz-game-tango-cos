@@ -1,180 +1,269 @@
 # 破码 - 交付报告
 
-## 任务摘要
+| 字段 | 值 |
+| --- | --- |
+| 英文名 / 仓名 | 破码 TANGO · `z-biz-game-tango-cos` |
+| 基线 → 本次 | 并线后 `43481a5` → 修复 + 本文件这一笔 |
+| 玩法一句话 | 4 位 × 6 色（1296 枚码）里猜出那一枚密码；每关印着的"N 次必破"不是人觉得像几分难，而是 `js/core/minimax.js` 在 `p(n)` 个局面上的极小极大搜索量出来的最坏情况保证值 |
+| 依赖数 | 0（`dependencies` 与 `devDependencies` 都是 `{}`，无打包器、无 npm install） |
+| node 层断言 | 105 条（7 个套件），fail 0 |
+| 浏览器层断言 | 66 条（`@boot @play @routes @save @pointer` 五档），fail 0，console 干净 |
+| 部署集闸 | 64 条引用（含 4 张位图尺寸核对）/ 86 条断言，fail 0；台架 `DS_SELFTEST rc=0` |
+| 测试钩子 | `window.tango`（含 `frames()` / `pegPoint()` / `palettePoint()` / `setReducedMotion()`） |
+| 路由 | `#/c/<n>` · `#/daily` · `#/random/<band>/<token>` |
 
-| 属性 | 内容 |
-|------|------|
-| **项目名称** | TANGO |
-| **App 名称** | 破码 |
-| **形态** | 浏览器原生（ES modules，零依赖）+ Electron 壳 + GitHub Pages |
-| **仓库** | `z-biz-game/z-biz-game-tango-cos` |
-| **分组** | E（益智解谜），无成就 / 无排行榜 / 无云存档 |
-| **玩法概述** | Mastermind：4 位 × 6 色码本里，用黑/白 peg 反馈猜出被列为密码的那枚码 |
-| **核心差异点** | 每关印着的"精确值 N 次必破"是极小极大搜索量出来的最坏情况保证值，可从序列化的 `book` 复解；难度不是标签 |
-| **代码量** | 不含文档约 4,832 行：引擎 1,340 · 画面/外壳 753 · 关卡数据 43 · 测试与 fixture 1,370 · 工具（bake/bench/harness/playtest 909 + verify.sh 139）· 服务与 Electron 103 · HTML/CSS 175 |
+## 0. 一句话
 
-> 关于命名的说明：规格文档 `tango.md` 的中文名是「破码」（Mastermind 破译码本），本仓即按此实现。
-> 交接材料里出现过的"双星/双豆"另有所指，与本作模型不符；本文档统一以规格为准记「破码」。
+并线（`43481a5`）把两侧内容按"重叠块取较新权威"合到一起，在这仓留下七处互相打架的接线，
+其中第一处是**整局级**的：`js/view.js` 里 `step(now)` 的参数名与函数体里的 `const now = nowMs();`
+撞名，ES module 里同名声明是 SyntaxError ⇒ 模块根本不加载 ⇒ `js/main.js` 的 import 一起炸
+⇒ 页面上一行都不跑（`npm test` 在语法那一步就退 1，连套件都进不去）。
+这次逐处归因并修掉，**没有删任何功能**：删的全是并线拼出来的重复实现
+（两套全屏、两套减弱动效、重复的 service worker 注册、重复的一份图标集），
+并线弄丢的那几块（本地那侧的整套 head 与图标集、本地那侧的时钟实现、本地那侧的清单与 SW）都补回来了。
 
-## 真实文件清单
+## 1. `js/view.js`：`step(now)` 与 `const now` 撞名 ⇒ SyntaxError ⇒ 整局不可玩
 
-只列磁盘上确实存在、且被某条命令真实执行过的文件。
+**旧代码错在哪**
 
-| 文件 | 行数 | 由谁验证 |
-|------|------|----------|
-| `js/core/codes.js` | 162 | `test/codes.test.mjs`（15 条）· `@play` 页面内独立复算反馈 |
-| `js/core/book.js` | 95 | `test/book.test.mjs`（11 条）· `@play` 的 `consistent()` 收缩复算 |
-| `js/core/minimax.js` | 279 | `test/minimax.test.mjs`（21 条，含 budget/floor/policyClosed） |
-| `js/core/decide.js` | 99 | `test/minimax.test.mjs` + `test/library.test.mjs` 的 `canBreakIn(par±1)` 两侧 |
-| `js/core/game.js` | 218 | `test/game.test.mjs`（14 条）· `@play` 通关/评星 |
-| `js/core/library.js` | 114 | `test/library.test.mjs`（18 条，全池逐关复解） |
-| `js/core/storage.js` | 155 | `test/storage.test.mjs`（9 条，node 内存退化）· `@save`（真实 localStorage） |
-| `js/core/make.js` | 112 | `tools/bake.mjs` 的接受率门 + `tools/bench.mjs`（无独立 node 套件，经产物复证） |
-| `js/core/rng.js` | 49 | 被 `library.test` 的 hashSeed/mulberry32 确定性断言覆盖 |
-| `js/core/budget.js` · `table.js` | 30 · 27 | 被 `minimax.test`（BudgetError 红线）与 `codes.test`（反馈表）间接钉死 |
-| `js/view.js` | 297 | `tools/playtest.mjs` 的 `@pointer`（18 条，真实鼠标键盘） |
-| `js/main.js` | 456 | `@boot`(12) `@play`(10) `@routes`(15) `@save`(11) 与 `@pointer` |
-| `js/data/lots.js` | 43 | `test/library.test.mjs` 逐关复解（32 关全复） |
-| `index.html` · `css/game.css` | 73 · 102 | 截图 + `@pointer` 控件存在性断言 |
-| `server.cjs` | 69 | `tools/verify.sh` 用它起静态服务 |
-| `electron/main.cjs` | 34 | `node --check`（Electron 未安装，**未做启动验证**） |
-| `tools/bake.mjs` | 229 | 产出 `js/data/lots.js`，产物被 `library.test` 复证 |
-| `tools/bench.mjs` | 106 | 手跑 `node tools/bench.mjs`（`|S|`-成本/死区，DESIGN 第 2 节引用） |
-| `tools/playtest.mjs` | 540 | `tools/verify.sh` |
-| `tools/verify.sh` | 139 | 本地与 CI browser job |
-| `tools/harness.mjs` | 34 | node 套件的输出格式 |
-| `test/*.test.mjs` | — | `npm run unit`（88 条断言） |
-| `test/naive.mjs` · `fixture.mjs` | 63 · 63 | 小空间穷举树 + 手算 fixture，被 `minimax`/`codes` 套件 import |
-| `.github/workflows/ci.yml` · `pages.yml` | 41 · 41 | 推上 GitHub 后由 Actions 执行（本地未跑） |
+并线后的 `js/view.js` 是两套时间实现拼起来的：
 
-## 改动表：一开始错在哪 → 现在为什么对
+* 本地侧那套：`step(now)` 接 rAF 的时间戳，用 `last` 算 dt，`advance(dt)` 是**唯一**让时间往前走的地方
+  （`paused` 在动任何累加器之前就 return，所以暂停是冻住而不是变慢）；
+* 远端侧那套：`tick()` 自己调 `nowMs()` 取时间，用 `animT0` 算 dt。
 
-| # | 错误的做法 | 为什么错 | 现在的做法 | 证据 |
-|---|------------|----------|------------|------|
-| 1 | `js/data/lots.js` 缺失（builder 从没跑过 bake） | `library.js`/`main.js` import 它，缺则运行时炸 | 跑 `tools/bake.mjs` 生成 32 关；产物被 `library.test` 逐关复解 | 结构 diff 复现确定性，仅 `BAKED_AT`/`ms` 随运行变 |
-| 2 | `test/codes.test.mjs` fixture `1223 vs 2233` 期望 `(1,2)` | 手推漏了：猜法第 4 位的 `3` 压在密码第 4 位的 `3` 上是**第二个黑 peg**，不是白 | 期望改 `(2,1)`：黑=位 2、位 4；剩余 {1,2}/{2,3} 共用一色→白=1。**改的是测试，实现本就对** | `test/fixture.mjs` 的手推注释 + `test/codes.test.mjs` 绿 |
-| 3 | `library.test` 想证"删一枚码 `value` 必降" | 难度带是粗颗粒，删单码常仍在带内，该断言不可能普遍成立 | 换成"删码单调不升" + 把一本 probe 削到只剩 2 码、逼 `value` 落到 2 < 印着的 3 | `test/library.test.mjs`（pare-down 链断言） |
-| 4 | `game.test` 断言第 2 手 `hint.exact===true` | 只剩 1 候选的子集**按构造无 policy 条目**（`value` 只对 ≥2 定义），兜底必是 `split/exact:false` | 改为断言"被迫收尾一手"诚实标 `exact:false, left:null` | `js/core/game.js:172`；`test/game.test.mjs` + `@pointer` 收尾断言 |
-| 5 | `js/main.js` 顶栏 `#modes` 三个模式按钮无监听 | aria-current 显示在哪个模式，点了不切换——幽灵 UI | 接 `click` → 路由（含随机模式现造 token） | `@routes` "the header 每日 button routes (it was dead wiring once)" |
-| 6 | 裸 `#/random` 内部造 key 但不写回地址栏 | 分享出去的链接是 `.../null`，收的人不可复现 | resolve 造 token 后 `go()` 写回 URL | `js/main.js:95-99`；`@routes` `/^#\/random\/[a-z]+\/\d+$/` |
-| 7 | `clearDraft`/`bakedAt`/`persistent` 三个导出无人 import | "文件存在但功能不存在"的幽灵导出 | 全部接线：`persistent()`→启动 `CAN_PERSIST`+内存模式横幅；`bakedAt`→crumbs 烘焙时间戳；`clearDraft`→真实 Escape 清草稿 | `@boot`（persist/crumbs 断言）、`@pointer`（真实 Escape） |
-| 8 | `@pointer` 起手 `load` 后同 tick 读 `state.id` | `go()` 经 `hashchange` **异步**生效，读到的是上一套件遗留的每日关（glance-03） | 加载后有界轮询状态 id 直到 `glance-01`（≤40×80ms） | `tools/playtest.mjs` fresh 段 |
-| 9 | `@pointer` 断言"通关后点 submit 会说已经结束" | 通关后 `el.submit.disabled` + 幕布盖住 + 键盘 Enter 早退——**无真实事件**能打印那句 | 断言改成可证伪真值：submit 已 `disabled` 且点击不计费；`reason:'over'` 核心守卫在 node 层证明 | `js/main.js:154,325`；`test/game.test.mjs` |
-| 10 | bake 只打印 `worst ms`，缺接受率/中位 | 任务要求打印每档 n、接受率、计数器中位/最大耗时 | 每档补 `accept=…% · counter ms med/max · nodes med/max · reject tally` | `tools/bake.mjs` 报告段；本文件"生成"结论 |
+并线把本地侧的**签名**与远端侧的**函数体**接到了一起：
 
-**关于 builder 断线处（搜索剪枝）的评估**：其临终说"naive pruning too weak，我要加 sharpened
-bound `|S|≤R^(k-1)` 容量界 + fail-high 有界递归"。**磁盘事实是这两样已完整实现并测绿**——
-`codes.js:capacity`、`minimax.js` 的 FLOOR/CAP/BOUNDS（fail-high）与 `repairWitness` 均在，
-`test/minimax.test.mjs` 绿。故未新增/回退任何核心搜索代码；本仓核心逻辑文件在收尾阶段**未被改动**，
-改的是生成产物、测试套件、台架、外壳接线与文档。
-
-## 构建验证结论
-
-### 语法 + 单元（等价于 CI `unit` job）
-
-```
-$ npm run check
-OK
-
-$ node --test test/
-✔ test/book.test.mjs      rows: 11 fail: 0
-✔ test/codes.test.mjs     rows: 15 fail: 0
-✔ test/game.test.mjs      rows: 14 fail: 0
-✔ test/library.test.mjs   rows: 18 fail: 0
-✔ test/minimax.test.mjs   rows: 21 fail: 0
-✔ test/storage.test.mjs   rows:  9 fail: 0
-ℹ tests 6  pass 6  fail 0  skipped 0
+```js
+  function step(now) {
+    raf = 0;
+    const now = nowMs();        // ← 参数名与函数体里的 const 同名
 ```
 
-合计 **88 条断言，0 失败**（下限要求 45，达标）。
+ES module 的顶层与函数体都是严格模式，同名声明是 **SyntaxError**（不是运行期错误），
+解析阶段就失败 ⇒ `js/view.js` 永远不会被求值 ⇒ `js/main.js` 里的
+`import { createView } from './view.js'` 一起失败 ⇒ 整局不可玩。
 
-### 浏览器（等价于 CI `browser` job）
+而且这不止一处：并线还把本地侧那段声明（`live` / `clock` / `frames` / `last`）换成了远端侧那段
+（`animT0` / `ANIM_MS` / `nowMs`），于是本地侧的 `advance(dt)` 里那句 `clock += dt`、
+`live = Math.max(0, live - dt)` 引用的是**根本没声明**的变量；`setGame` 里还调着一个
+并线过程中被改名的 `tick()`（那个函数已经不存在了）。
+就算把语法那处改掉，严格模式下的 ReferenceError 也会接着炸。
+
+**新代码为什么对**
+
+`js/view.js` 整体还原成本地侧那版——它是完整的一套：**一个时间源**（rAF 给的时间戳）、
+**一处让时间往前走**（`js/view.js:370` 的 `advance(dt)`）、**一个暂停语义**
+（`paused` 在动累加器之前就 return）。`js/view.js:383` 的 `step(now)` 用 rAF 的时间戳算 dt，
+夹在 50 ms 以内（后台标签页的 rAF 会停，回来时不能一口吃成整段动画）。
+
+远端侧那套并没有白来：它有一个本地侧没有的**只读探针** `isReducedMotion()`。
+这一行留在还原后的视图上（`js/view.js:439` 的 `isReducedMotion`），
+让量具与手工测试能问"这枚开关现在开着吗"，不必去改系统设置再回读画面。
+
+## 2. `js/main.js`：并线在文件尾巴上又拼了一整块
+
+**旧代码错在哪**
+
+并线后的 `js/main.js` 是本地那版**加上**远端那版的一整块（695 行之后）：
+
+* 一个 `bindFullscreen` IIFE，绑的是 `#btn-fullscreen`——而本地那版的 `toggleFullscreen`
+  已经绑着 `#fullscreen` 了；于是页面上有两颗全屏按钮、两条全屏接线，
+  而且远端那套自己还注册了一个 `keydown` 监听，按 F 键会**连着切两次**（进全屏再退出）；
+* 一套**第二份**减弱动效路径：`motionQuery` / `applyReduceMotion` / 自己的 change 监听，
+  改的是另一个名字的 setter（`view.setReduceMotion`），与本地那套 `view.setReducedMotion` 各改各的。
+
+**新代码为什么对**
+
+接线只留一条，能力取两边并集：
+
+* `js/main.js:333`（`fullscreenApi`）一次问清 `requestFullscreen` / `webkitRequestFullscreen` /
+  `msRequestFullscreen` 与三个 `exit*`、三个 `fullscreenElement`（远端那套的 ms 前缀补进本地那套）；
+* `js/main.js:347`（`markFullscreenUnsupported`）查不出能力就把按钮灰掉并把原因写进 `title`
+  （不解释的禁用等于这功能没做完）；被拒绝时也走这一条；
+* `requestFullscreen` 返回 Promise，iOS Safari 对多数非 video 元素直接拒绝，
+  这个 rejection 必须吃掉，否则冒泡成未捕获错误、整局游戏跟着挂；
+* 退出走 `fullscreenchange` / `webkitfullscreenchange` / `MSFullscreenChange` 三个事件回写按钮状态
+  （`js/main.js:481` 的 `MSFullscreenChange`）；
+* F 键补 `ev.repeat` 守卫（`js/main.js:526` 的 `low === 'f'`）：按住不放不该连着切进切出；
+* 减弱动效：系统设置与运行时钩子**走同一条路**（`app.reducedMotion` + `view.setReducedMotion`），
+  钩子挂在 `js/main.js:723`（`window.tango.setReducedMotion`），探针挂在下一行。
+
+## 3. `index.html`：head 被换成远端那版，页面因此少了一半
+
+**旧代码错在哪**
+
+并线把 `index.html` 的 head 换成了远端那版，丢掉了本地那版的：
+
+* 五档 PNG favicon（16/32/48/96/192）+ `apple-touch-icon`（`assets/img/` 那套，
+  由 `assets/gen/gen_art.py` 逐字节生成）；
+* `theme-color` / `apple-mobile-web-app-capable` / `mobile-web-app-capable` /
+  `apple-mobile-web-app-title` / `apple-mobile-web-app-status-bar-style`；
+* 远端那版自己带来的是一枚 `<link rel="icon" href="data:,">`——**空的 data URI**，
+  以及指向另一套图标目录（`icons/`）的三行 link。
+
+同时页面上多了：第二份 `<link rel="manifest">`、第二块 `<details class="about">`（玩法说明）、
+第二颗全屏按钮 `#btn-fullscreen`、以及一条 `<script src="js/sw-register.js">`。
+
+**新代码为什么对**
+
+`index.html` 整体还原成本地那版（`index.html:21-25` 是那五档 favicon，
+`index.html:27` 是那一条 manifest link，`index.html:41` 是那颗全屏按钮），
+并按部署集闸的 R7 把 `og:image` / `twitter:image` 改成**绝对 URL**
+（`index.html:11` 的 `og:image`）：抓取器读的是别人页面上的字符串，不会替 Pages 补 `/<slug>/` 前缀，
+相对写法在别人眼里就是一张 404 的卡片。README 里那份部署前缀声明（第七节之前那一段）就是闸的 PAGES 来源。
+
+## 4. 清单、SW、图标：两套并存
+
+**旧代码错在哪**
+
+* `manifest.webmanifest` 取了远端那版：三个图标全部指向 `icons/`，元信息只剩
+  name/short_name/start_url/display/主题色——本地那版的 `id` / `lang` / `dir` / `scope` /
+  `display_override` / `orientation` / `categories` / `description` 与两条 `shortcuts` 都没了，
+  1024 母本与 192 档也没了；
+* `sw.js` 取了远端那版（`VERSION='tango-cos-v1'`，只预缓存两件），
+  而本地那版是 `VERSION='tango-cos-v3'`（`sw.js:13` 的 `VERSION`）并预缓存整份外壳；
+* `js/sw-register.js` 是远端那侧的经典脚本，自己注册一次 service worker——
+  而本地那侧的 `js/main.js:619`（`serviceWorker.register`）**已经注册了**；
+* `icons/` 那 5 张 PNG 与本地那侧的 `assets/img/` 12 张是**同一批图的两种落法**
+  （本仓的图由 `assets/gen/gen_art.py` 生成，`icons/` 那套在本仓里没有生成器）。
+
+**新代码为什么对**
+
+* 清单还原成本地那版（`manifest.webmanifest:14` 的 `icons` 指向 `assets/img/`，
+  `manifest.webmanifest:20` 的 `shortcuts` 也回来了）；
+* `sw.js` 还原成本地那版（与本地那侧的注册、预缓存、离线兜底同一套）；
+* 删掉 `js/sw-register.js` 与它在 `index.html` 里的那条 script 标签——注册只留 `js/main.js` 那一路
+  （带 `navigator.serviceWorker` 存在性守卫、失败不抛、scope 按页面算）；
+* 删掉 `icons/` 那 5 张重复的 PNG：清单与页面都指向 `assets/img/`，而那份是有生成器的。
+
+## 5. 文档行号：3 处引用漂了
+
+**旧代码错在哪**
+
+并线把 `js/core/storage.js` 换成了本地那版（234 行），而 `DESIGN.md` 里那三处引用指着的是
+**远端**那版（155 行）的行号：
 
 ```
-$ SKIP_UNIT=1 bash tools/verify.sh
-boot lot: glance-01
-=== @boot ===     rows: 12 fail: []
-=== @play ===     rows: 10 fail: []
-=== @routes ===   rows: 15 fail: []
-=== @save ===     rows: 11 fail: []
-=== @pointer ===  rows: 18 fail: []
-=== win shot ===
-{ "won": true, "guesses": 2, "stars": "★★★" }
+FAIL D3 每一条 `path:NN` 都指回实处 …
+     解析 32 条 · 指不回实处 1 条：js/core/storage.js:78 那几行整段是空行
+FAIL D4 锚点腿：贴着引用那个名字必须作为**完整标识符**出现在被指的那几行里
+     带指认 7 条 · 对不上 2 条：js/core/storage.js:147 那几行里没有 persistent | js/core/storage.js:103 那几行里没有 solve
+```
+
+**新代码为什么对**
+
+逐条重钉到当前树上真的那几行（改的是**钉**，不是闸的断言强度）：
+
+| 旧引用 | 新引用 | 指认 |
+| --- | --- | --- |
+| `js/core/storage.js` 147 行 | `js/core/storage.js:226` | persistent |
+| `js/core/storage.js` 103 行 | `js/core/storage.js:173` | solve |
+| `js/core/storage.js` 78 行 | `js/core/storage.js:150` | unlock |
+
+`test/docs.test.mjs`（并线从远端侧带进来的那条腿）随即回到 `rows: 15 fail: 0`。
+
+## 6. 真实文件清单（本次动过的 13 个文件）
+
+| 文件 | 动了什么 | 为什么 |
+| --- | --- | --- |
+| `js/view.js` | 整体还原成本地那版（一个时间源 / 一处 advance / 一个暂停语义）+ 补 `isReducedMotion` 探针 | 重复声明是 SyntaxError，整局不可玩 |
+| `js/main.js` | 删并线拼在尾巴上的第二套全屏与第二套动效；能力并入本地那套；F 键加 `repeat` 守卫；补运行时钩子 | 一次点击走两条路；按键连切 |
+| `index.html` | 整体还原成本地那版（head、favicon 集、玩法说明、按钮）；`og:image` 改绝对 URL | head 少了一半；分享卡片 404 |
+| `manifest.webmanifest` | 还原成本地那版（`assets/img/` 图标 + 全套元信息 + shortcuts） | 清单与页面不同源 |
+| `sw.js` | 还原成本地那版（`tango-cos-v3` + 整份外壳预缓存） | 与本地那侧的注册不同源 |
+| `js/sw-register.js` | 删除 | 与 `js/main.js` 的注册重复 |
+| `icons/`（5 个 PNG） | 删除 | 与 `assets/img/` 里的同一批图重复，那份有生成器 |
+| `DESIGN.md` | 3 处行号重钉 | 并线换了被引用的文件 |
+| `README.md` | 部署集闸那三对数（25→64、43→86）、node 层套件与条数（6 套 88 条 → 7 套 105 条）、`icons/*` → `assets/img/*` | 文档要指得到真的东西 |
+| `tools/deploy-set.mjs` | 两对常量重钉（64 / 86） | 页面换了，钉的是实数 |
+| `deliverable.md` | 本文件 | 交付物 |
+
+## 7. 删行审计
+
+`git diff --stat 43481a5 HEAD`：13 files changed, …（见第 9 节实跑输出）。
+
+删掉的行逐块点名（**没有一块是功能**）：
+
+| 删掉的东西 | 为什么可以删 |
+| --- | --- |
+| `js/view.js` 里远端那套时钟实现（`animT0` / `ANIM_MS` / `nowMs` / `tick`） | 与本地那套重复；本地的那个时间源只有一处 |
+| `js/view.js` 里并线拼出来的 `step(now)` + `const now` | 同名声明是 SyntaxError |
+| `js/main.js` 里 `bindFullscreen` IIFE（整段） | 与本地那套重复；能力已并入 |
+| `js/main.js` 里第二套 `motionQuery` / `applyReduceMotion` / 监听 | 两套路径各改一份状态 |
+| `index.html` 里远端那版的 head（含 `href="data:,"`） | 换成有生成器的那套 favicon |
+| `index.html` 里重复的 manifest link / 第二块玩法说明 / 第二颗全屏按钮 / `sw-register.js` 的 script 标签 | 同一件事写两遍 |
+| `manifest.webmanifest` 远端那版整份 | 换成本地那版，不是删功能 |
+| `sw.js` 远端那版整份 | 换成本地那版，不是删功能 |
+| `js/sw-register.js` 整份 | 与 `js/main.js` 的注册重复 |
+| `icons/` 5 张 PNG | 与 `assets/img/` 里的同一批图重复 |
+
+## 8. 行为变化需知会
+
+1. **减弱动效的对外钩子改名**：`window.tango.setReduceMotion` → `window.tango.setReducedMotion`。
+   名字取本地那侧那个（视图上的 setter 也是这个名）；旧的 `setReduceMotion` 不再存在
+   （并线后两个都在，是并线拼出来的）。`window.tango.isReducedMotion()` 保留。
+2. **全屏按钮被禁用时会写明原因**：查不出元素全屏能力（iOS Safari 的普通页面）或请求被拒时，
+   按钮变灰且 `title` 里写清楚，而不是只弹一句 toast。
+3. **F 键不再连切**：按住不放只切一次。
+4. **分享卡片现在指绝对 URL**：`og:image` 从 `assets/img/og.png` 改成
+   `https://z-biz-game.github.io/z-biz-game-tango-cos/assets/img/og.png`。
+5. **service worker 只注册一次**（走 `js/main.js` 那一路），缓存名回到 `tango-cos-v3`。
+
+## 9. 验收命令与原样输出
+
+```
+$ cd z-biz-game-tango-cos && bash tools/verify.sh
+...
+rows: 11 fail: 0     (test/book.test.mjs)
+rows: 15 fail: 0     (test/codes.test.mjs)
+rows: 15 fail: 0     (test/docs.test.mjs)
+rows: 14 fail: 0     (test/game.test.mjs)
+rows: 18 fail: 0     (test/library.test.mjs)
+rows: 21 fail: 0     (test/minimax.test.mjs)
+rows: 11 fail: 0     (test/storage.test.mjs)
+=== @boot ===     rows: 12 fail: 0
+=== @play ===     rows: 10 fail: 0
+=== @routes ===   rows: 15 fail: 0
+=== @save ===     rows: 11 fail: 0
+=== @pointer ===  rows: 18 fail: 0
 === console ===
 (none)
+=== deploy-set ===
+部署集：64 条引用（含 4 张位图尺寸核对），失败 0 项
+rows: 86 fail: 0
+DS_SELFTEST rc=0（0=每一刀都按预期发力、阴性对照按预期不发力）
+DS_SELFTEST_BASELINE 部署集：64 条引用（含 4 张位图尺寸核对），失败 0 项 rows=86
 === ALL GREEN ===
 ```
 
-合计 **66 条断言，0 失败，console 无错误，退出码 0**（下限要求 40，达标）。
-`@pointer` 用真实 `Input.dispatchMouseEvent` 把 `glance-01` 的整条认证解点完并正确判终局。
-截图两张（真实 Chrome 人眼核对非空，均 980×733 PNG）：
+`RC=0`。node 侧 7 个套件合计 105 条断言、浏览器侧 5 档合计 66 条断言，全部 `fail: 0`，
+控制台 `(none)`，部署集双闸 64 条引用 / 86 条断言 0 失败、台架 rc=0。
 
-- `/tmp/tango-shots/boot.png`：开屏进入 `glance-01`（战役第 1 关），画布有像素、6 色 palette（琥/青/玫/苔/紫/霜）、右侧面板四数（下界 1 / 精确值 2 / 已用 0/10 / 剩余候选 4/4 / R 15）齐。
-- `/tmp/tango-shots/win.png`：以 par=2 通关，幕布 ★★★「当庭破码」，"用了 2 次 · 这一关的精确值是 2 · 码本 4 码 · 下界 1"，提交按钮已置灰（终局锁）。
+## 10. 未实现 / 需人接手
 
-### 生成与搜索实测（`npm run bake` / `npm run bench`，接受率与耗时的诚实结论）
+1. **线上站点没验过**：本轮只跑了本地闸，没有对
+   `https://z-biz-game.github.io/z-biz-game-tango-cos/` 做任何网络核对。
+   README 里那份部署前缀声明是**写给闸读的**，不是"站点已上线"的读数。
+2. **部署集闸的 X13 那一把在本仓是 SKIP**：它要清单里真有一段内联 base64 位图，
+   而本仓的清单图标是 `assets/img/` 里的真文件 ⇒ 台架打印 SKIP。
+   P 段改由 X7 证（把 `assets/img/icon-192.png` 的声明改成 256x256 必须被点名，实跑确实点了名）。
+3. **构建期成本没重测**：`npm run bake` 与 `npm run bench` 本轮没跑（那是分钟级的构建期作业，
+   与本轮的合线修复无关）；README 里"围城档单本码本中位 2088 ms"那个读数仍是上一轮的。
+4. **`electron` 桌面形态没跑过**：`electron` 不是依赖（`package.json` 里两个 `{}`），
+   `npx electron .` 要自己先装。
 
-```
-$ node tools/bake.mjs
-glance: n=8 accept=100% · counter ms med 0.0 / max 1.0 · nodes med 1 / max 1 · policy 8 entries (0.1 kB) · reject {"kept":8,"drawRefused":1}
-probe:  n=8 accept=100% · counter ms med 1.0 / max 2.0 · nodes med 9 / max 10 · policy 65 entries (1.0 kB) · reject {"drawRefused":8,"kept":8}
-grind:  n=8 accept=100% · counter ms med 7.0 / max 8.0 · nodes med 50 / max 55 · policy 369 entries (11.9 kB) · reject {"kept":8}
-siege:  n=8 accept=100% · counter ms med 2088.0 / max 2378.0 · nodes med 2621 / max 2795 · policy 1511 entries (152.4 kB) · reject {"kept":8}
-file: 196.1 kB in 34.4s total
-```
+## 11. 基线归因（并线后基线 vs 并线前）
 
-- **接受率**：四档均 100%（`kept` 计满 `PER_TIER`，无 `light/heavy/budget` 丢弃），**未触及 <20% 红线**。
-- **计数器中位耗时**：glance/probe/grind 全部 ≤ 7 ms；**siege 中位 2088 ms、最大 2378 ms，远超 300 ms**
-  ——按纪律如实写在这里与 README/DESIGN。这是**构建期**成本（整 bake 约 34 s，几乎全在 siege），
-  不进点击路径，故不影响手感；但提高 `PER_TIER` 会线性放大它。
-- **搜索最大状态数**：入库关卡复解最大 2795 节点（siege）；bench 扫出的 `|S|≈420` 死区单本要 36769 节点 / 约 6.5 s，
-  是"朴素剪枝太弱"的最硬证据，`|S|` 窗口刻意绕开它落在 493–519。
+用 `git worktree add --detach /tmp/tango-merge 43481a5`（并线后）与
+`/tmp/tango-ours 43481a5^1`（并线**前**那一侧）在**同一台机器**上跑同一批闸：
 
-## 唯一解 / 难度的证据在哪
-
-- **难度可复推**：`test/library.test.mjs` 对每关用全新求解器从序列化 `book` 复解，断言等于印着的 `value`。
-- **计数器不是装饰 / 两侧夹紧**：`test/library.test.mjs` 对每关断言 `canBreakIn(book, value-1)===false`
-  且 `canBreakIn(book, value)===true`（第二求解器，无 memo）；`test/naive.mjs` 再对小空间穷举背书。
-- **提示最优性**：`policyClosed` 的闭合 + 严格下降检查（bake 与 `minimax.test` 都跑），使
-  `hint` 的 `exact:true` "还需 N 次"为定理级事实而非启发式。
-
-## 未实现清单（写清楚，不留空头承诺）
-
-- **浏览器内生成/搜索**：故意不做（DESIGN 第 2/3.2 节实测：siege 单本 >2 s）。"换一关"是从烤好的池子换种子取关。
-- **Electron 打包产物**：`electron/main.cjs` 存在且过 `node --check`，但仓库不装 electron，**未跑真实启动**。
-- **CI/Pages 已在真实 runner 绿**：`ci.yml`/`pages.yml` 按契约写好（Syntax 步与 `npm run check` 文件集逐字
-  一致；Pages 只 `cp index.html css js`，绝不 `path: .`）。2026-09-27 主代理发布后 Actions 实跑
-  `success`（trigger sha `9d8fb3b`），线上产物见下面的「线上验收」一节。
-- **成就 / 排行 / 云存档 / 战绩分享**：组织规范 E 组禁止；分享只有 `#/lot/<id>`（同关不含分数）。
-- **移动端真机手势验证**：`@pointer` 用 CDP 派发合成鼠标/键盘事件，未在真 touch 设备验证 `touch-action`。
-- **大于 420 死区另一侧的更难关卡**：`|S|` 再往上需先重解搜索预算，非调大 `maxMs` 可及。
-- **通关音效 / 彩带 / 美术资产**：全仓 0 个二进制资产文件。
-- **多语言**：UI 只有中文。
-
-## 线上验收（GitHub Pages，主代理 2026-09-27 实抓）
-
-发布 sha `44b9e28`，CI trigger `9d8fb3b` → Actions `success`。
-
-产物可达性（`curl`，只看 HTTP 状态与字节数）：
-
-| 资源 | 结果 |
-| --- | --- |
-| `/`（index.html） | 200 / 3,474 B |
-| `js/main.js` | 200 / 17,917 B |
-| `css/game.css` | 200 / 6,545 B |
-| `js/data/lots.js` | 200 / 200,780 B |
-| `<title>` | 与 README 标题一致 |
-
-真实浏览器渲染（`https://z-biz-game.github.io/z-biz-game-tango-cos/`，2026-09-27 09:35Z）：
-
-- `document.title` = `破码 · TANGO`；
-- canvas 后备缓冲 `1384x1142`，CSS 盒 `692x570.7`（devicePixelRatio 2 生效，不是 300x150 的未布局默认值）；
-- `getImageData` 全量采样 1,580,528 个像素：其中 **1,233,850 个非近黑**，出现 **2,341 种不同 RGB**——
-  画布确实在画棋盘与棋子，而不是留一张黑底；
-- `window.tango` 存在并暴露 **18 个键**（应用钩子已挂上，路由可寻址）；
-- 控制台 **0 条消息**（无 error、无 warning）。这也覆盖了 `/favicon.ico`：`index.html:8` 用的是
-  `<link rel="icon" href="data:,">`（一个空 data URI，浏览器因此根本不发 favicon 请求），
-  见 DESIGN.md 第 6 条；**不是**内联 SVG 图标——那是后续可选的视觉打磨，与本节的"console 干净"无关。
-
-诚实边界：这一节是"结构 + 像素统计"级别的证据（在真实页面里跑 `evaluate_script` 取 `getImageData`），
-**不是**逐帧视觉比对的截图；本次未产出 PNG 截图，仓库也保持 0 个二进制资产。
+| 腿 | 并线前（`43481a5^1`） | 并线后（`43481a5`） | 归因 |
+| --- | --- | --- | --- |
+| `npm run check`（语法门） | 通过 | **SyntaxError: Identifier 'now' has already been declared**（`js/view.js`） | 并线引入（整局级） |
+| `npm test` | 通过（6 套 90 条） | 语法那一步就退 1，套件一条都进不去 | 并线引入 |
+| `test/docs.test.mjs` | 不存在（远端侧才有这条腿） | 红 2 项（3 处引用漂） | 并线引入 |
+| `tools/deploy-set.mjs` | 不存在（远端侧才有这套闸） | 红 2 项（条数与断言数两对钉失配） | 并线引入 |
+| `index.html` 的 head | 五档 favicon + 移动端元信息 + 本地那版 og:image | 换成远端那版：少一半、加一枚 `data:,`、加第二份 manifest link 与第二块玩法说明 | 并线引入 |
+| `js/main.js` 的全屏 | 一套（`#fullscreen`） | 两套（多一条 IIFE、多一颗按钮） | 并线引入 |
+| service worker 注册 | 一处（`js/main.js`） | 两处（多一份 `js/sw-register.js`） | 并线引入 |

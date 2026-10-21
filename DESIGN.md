@@ -124,7 +124,7 @@ policy 只为 `|S| ≥ 2` 的子集而存在（`value` 的定义就是 ≥2 才�
 
 `node --test test/*.test.mjs` 能直接 import 核心（无 `window`），`tools/playtest.mjs` 能从真实鼠标
 事件驱动同一个 `commit()`。任何一处让 `js/core` 摸到 `window`，第一套立刻瘫。`js/core/storage.js`
-用 `persistent()`（`js/core/storage.js:147`）检测无 `window` 时退化，正是为了这条边界可测。
+用 `persistent()`（`js/core/storage.js:226`）检测无 `window` 时退化，正是为了这条边界可测。
 
 ---
 
@@ -150,8 +150,8 @@ policy 只为 `|S| ≥ 2` 的子集而存在（`value` 的定义就是 ≥2 才�
 `tango.save.v1`（`js/core/storage.js`），版本化逐字段兜底，`window.localStorage` **会抛**（无痕、
 被挡第三方存储、嵌入 webview）——所有访问 try/catch，失败退化为内存会话（`persistent()===false`）。
 
-- **`best` 只会变小**（`js/core/storage.js:103` 的 `solve`）：重玩打出更差成绩不能擦掉更好的纪录。
-- **`unlock` 只会变大**（`js/core/storage.js:78`）：回玩第 3 关不能把第 9 关重新藏起来。
+- **`best` 只会变小**（`js/core/storage.js:173` 的 `solve`）：重玩打出更差成绩不能擦掉更好的纪录。
+- **`unlock` 只会变大**（`js/core/storage.js:150`）：回玩第 3 关不能把第 9 关重新藏起来。
 - **达到精确值**的旗标一旦点亮不因更差的重玩熄灭（`par: won && guesses<=par || prev.par`）。
 - 清档是全仓唯一破坏性操作 → 两次点击（`js/main.js:307`），`@save` 断言"第一次只上膛"。
 

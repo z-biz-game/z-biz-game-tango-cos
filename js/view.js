@@ -59,19 +59,13 @@ export function createView(canvas, { space, onPalette, onPeg, onRow } = {}) {
   // centres, `peg` the drawn size, so a slot always has a visible gap inside a row.
   let geo = { peg: 30, pitch: 36, ox: PAD, oy: PAD, rowH: 44, fbX: 0, palY: 0, palR: 14, palX: PAD, w: 320, h: 320 };
   let anim = 0; // 0..1, the last row sliding in
-  let animT0 = 0; // performance.now() when the current row started sliding in
-  // The reveal used to advance 0.12 per FRAME, so it needed a fixed 8 frames: the same move
-  // landed in 267ms at 30Hz and 67ms at 120Hz — four times faster on a high-refresh display.
-  // ANIM_MS is that same 60Hz look (8 frames * 16.67ms) expressed as a duration, and the tick
-  // below advances by real elapsed time, so every refresh rate takes the same wall-clock time.
-  const ANIM_MS = 140;
-  const nowMs = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
-
-  // ---- 减弱动效（prefers-reduced-motion）----
-  // 刚落下的那一行会在 140ms 里由 0.6 缩放到 1.0（anim 驱动），是一段入场动画。
-  // 它不承载状态：那一行的数字、颜色与黑白反馈都另画在别处。减弱动效下**直接落到 1.0**，
-  // 也就是这一行一出现就是最终大小 —— 少的是"长出来"的过程，棋盘本身一字不少。
-  let reduceMotion = false;
+  let live = 0; // seconds of "the desk is breathing" left after the last board change
+  let clock = 0; // seconds the view has actually advanced — frozen by pause, not by wall time
+  let frames = 0;
+  // null, not 0: a 0 sentinel makes the first callback compute a dt from the epoch (or, in a
+  // sandbox whose clock starts at 1000ms, eat a whole frame), and either way the row lands with
+  // one frame's worth of error that looks exactly like a frame-rate dependency.
+  let last = null;
   let raf = 0;
   let paused = false;
   let reduced = false;
@@ -388,12 +382,12 @@ export function createView(canvas, { space, onPalette, onPeg, onRow } = {}) {
 
   function step(now) {
     raf = 0;
-    // The one line that still eats frame dt. Clamped to 50ms so a backgrounded tab (rAF stops
-    // firing) resumes the reveal instead of snapping it to the end on the first frame back.
-    const now = nowMs();
-    const dt = animT0 ? Math.min(0.05, (now - animT0) / 1000) : 0;
-    animT0 = now;
-    anim = reduceMotion ? 1 : Math.min(1, anim + (dt * 1000) / ANIM_MS);
+    const t = typeof now === 'number' ? now : 0;
+    // Clamp, don't trust: a backgrounded tab hands back a multi-second dt, and the row would
+    // otherwise be drawn as if it had animated for that long.
+    const dt = last === null ? 0 : Math.max(0, Math.min(0.05, (t - last) / 1000));
+    last = t;
+    advance(dt);
     draw();
     if (paused) {
       last = null;
@@ -410,22 +404,19 @@ export function createView(canvas, { space, onPalette, onPeg, onRow } = {}) {
   }
 
   return {
-    // The gate the runtime pref flip lands on: idempotent, and snaps any in-flight reveal to
-    // its end state so the newest row does not keep growing after the setting changes.
-    setReduceMotion(v) {
-      const on = !!v;
-      if (on === reduceMotion) return reduceMotion;
-      reduceMotion = on;
-      if (reduceMotion && anim < 1) { anim = 1; animT0 = 0; draw(); }
-      return reduceMotion;
-    },
-    isReducedMotion: () => reduceMotion,
     setGame(g) {
       game = g;
-      anim = 0;
-      animT0 = 0;   // re-arm the clock with the phase, or the first tick would inherit the last row's dt
-      if (!raf) raf = window.requestAnimationFrame(tick);
-      else draw();
+      // Draw first: a test (or a browser that never fires another frame) must still see the
+      // board it asked for. The loop only adds the growth-in on top.
+      if (reduced) {
+        anim = 1;
+        live = 0;
+      } else {
+        anim = 0;
+        live = LIVE_WINDOW;
+      }
+      draw();
+      start();
     },
     measure,
     draw,
@@ -444,6 +435,8 @@ export function createView(canvas, { space, onPalette, onPeg, onRow } = {}) {
       return paused;
     },
     get paused() { return paused; },
+    // 只读探针：量具与手工测试要能问"这枚开关现在开着吗"，不必去改系统设置再回读画面。
+    isReducedMotion: () => reduced,
     setReducedMotion(v) {
       reduced = !!v;
       if (reduced) {

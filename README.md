@@ -11,7 +11,7 @@
 
 ```bash
 node server.cjs            # http://127.0.0.1:5180/（端口作参数：node server.cjs 5191）
-npm run unit               # 六个 node 测试套件（88 条断言）
+npm run unit               # 七个 node 测试套件（105 条断言）
 bash tools/verify.sh       # node 套件 + headless Chrome 真实鼠标键盘验收（66 条断言）
 npm run bake               # 重新生成 js/data/lots.js（约 35 秒，成本几乎全在 siege 档，见下）
 npm run bench              # 搜索体检：每个码本尺寸的精确值/耗时/状态数（约 20 秒）
@@ -64,9 +64,9 @@ node -e "import('./js/core/library.js').then(m => console.log(m.stats().byTier))
 
 `bash tools/verify.sh` 一条命令跑完两层，全部断言可判定：
 
-- **node 层**（88 条）：`test/codes.test.mjs` 码空间与两遍反馈、`test/book.test.mjs` 掩码/校验/
+- **node 层**（105 条，七个套件）：`test/codes.test.mjs` 码空间与两遍反馈、`test/book.test.mjs` 掩码/校验/
   `consistent` 收缩、`test/minimax.test.mjs` 精确值与剪枝预算、`test/game.test.mjs` 对局规则、
-  `test/library.test.mjs` 全池复验、`test/storage.test.mjs` 存档退化。
+  `test/library.test.mjs` 全池复验、`test/storage.test.mjs` 存档退化、`test/docs.test.mjs` 文档行号对账。
 - **浏览器层**（66 条）：`tools/playtest.mjs` 用零依赖 CDP 起一个真实 headless Chrome，`@boot`
   检查画布真的画出了像素、`@play` 走完通关与评星、`@routes` 覆盖四种路由与越界钳制、`@save`
   验证 localStorage 落盘与两次点击清档、`@pointer` **派发真实 `Input.dispatchMouseEvent`** 把整条
@@ -79,8 +79,8 @@ node -e "import('./js/core/library.js').then(m => console.log(m.stats().byTier))
 文档里印着的每个行号都由 `test/docs.test.mjs` 读回真文件对账：整词锚点、被指的那几行不许整段是
 空白、跨仓引用只数不判。这条腿住在 `test/` 下，所以 `npm run unit` 那条 glob 自动扫到它，`npm test`、
 `bash tools/verify.sh` 的单元段与 `.github/workflows/ci.yml:28` 的 `npm run unit` 都会跑到它——那是接线，
-跑没跑到由那一次 run 的读数说。本轮（2026-10-08，本机一次 `node test/docs.test.mjs`）：3 份文档 ·
-32 条引用 · 7 条带指认 · 0 条续引 · 0 条跨仓 · 文档行号对账 15 条判据，`rows: 15 fail: 0`。这六个数不再只是修辞：
+跑没跑到由那一次 run 的读数说。本轮（2026-10-21，本机一次 `node test/docs.test.mjs`）：3 份文档 ·
+46 条文档引用 · 18 条带指认 · 0 条续引 · 0 条跨仓 · 文档行号对账 15 条判据，`rows: 15 fail: 0`。这六个数不再只是修辞：
 这条腿现在逐处对账，文档里凡印着这些标签的地方都必须等于本轮实数，**一处都没印同样要红**（读数从文档里消失了，
 闸不替一句不存在的话作证）。这一格自己也证明了会咬：2026-10-08 在带 `.git` 的副本上，三把只动文档、不代码一行都不碰的刀各自红了一次，
 且点名的正是对应那一条标签（引用数抄歪一格、把份数从文档里抹掉、判据数抄歪一格），跑完树复原。
@@ -116,7 +116,7 @@ MIT © 2026 z-biz-game
 
 这个仓没有打包器：站点=一次文件拷贝。以前「拷哪些」写在 `pages.yml` 的 `run:` 里（手抄的几行
 `cp`）。本地 `index.html` 直读仓库根，永远自洽；线上却按那份清单拷，于是页面后来引用的
-`manifest.webmanifest`、`sw.js`、`icons/*` 可能一个都没上去——线上 404，而仓里的引擎测试与
+`manifest.webmanifest`、`sw.js`、`assets/img/*` 可能一个都没上去——线上 404，而仓里的引擎测试与
 真浏览器闸全绿，因为它们跑的都是仓库根，没有任何一步在「按清单拷」的那个环境下加载过页面。
 
 现在清单只有一份，住在 `tools/assemble-site.sh`：CI 调它拷 `_site`，本地闸调它拷临时目录，
@@ -134,7 +134,7 @@ MIT © 2026 z-biz-game
   内联成 base64 的图标先解码再读同一段。后一条不是可选项：图标可能住在清单里而不是盘上的 `.png`
   （有的仓另有一条"零二进制文件"的承诺，那条只约束"有没有 .png 这个文件"）；如果 P 段只筛文件名，
   声明写 512 而真图 192 就一路放行。
-- **钉住两个数**：R 段实际检查的路径条数（`25`）与这一次跑的断言条数（`43`），两个数
+- **钉住两个数**：R 段实际检查的路径条数（`64`）与这一次跑的断言条数（`86`），两个数
   都钉在 `tools/deploy-set.mjs` 顶部的那对常量里。没改页面却掉了，说明解析断了；删掉一张图标会同时
   少一条 R10 与那张的 P1/P2，所以两个数一起钉，断言条数能漂就是闸在缩水的信号。这一节故意只写数值、
   不写那对常量的名字，也不写别仓文档闸的编号：有的仓的文档闸会拿"文档里出现过的同名标识号"回数它
@@ -145,7 +145,7 @@ MIT © 2026 z-biz-game
 各下一刀（X1 清单不收位图目录 / X2 模块边改名 / X3 CSS 写绝对路径 / X4 `start_url` 绝对 /
 X5 删光 >=512 图标 / X6 少一个必填字段 / X7 声明尺寸与真图不符 / X8 workflow 不调脚本 /
 X9 CI 不跑闸 / X10 是阴性对照——往入口 JS 追加一行只写在注释里的假路径，闸必须仍然绿、条数仍然
-`25`、断言仍然 `43`；X11 og:image 退回相对路径 / X12 og:image 的前缀指向别的 slug /
+`64`、断言仍然 `86`；X11 og:image 退回相对路径 / X12 og:image 的前缀指向别的 slug /
 X13 内联位图谎报尺寸——只在有靶子时下：X11/X12 要页面上那句 og:image，X13 要清单里真有一段 base64
 图标，没有就打印 SKIP；反过来 X1 没有位图目录可砍时改砍 css，P 段一位都不核时台架直接报靶子不够），
 要求每一刀都让闸**点名**变红。靶子从 `DEPLOY_SET_DUMP=1`
