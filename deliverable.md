@@ -8,7 +8,7 @@
 | 依赖数 | 0（`dependencies` 与 `devDependencies` 都是 `{}`，无打包器、无 npm install） |
 | node 层断言 | 105 条（7 个套件），fail 0 |
 | 浏览器层断言 | 66 条（`@boot @play @routes @save @pointer` 五档），fail 0，console 干净 |
-| 部署集闸 | 64 条引用（含 4 张位图尺寸核对）/ 86 条断言，fail 0；台架 `DS_SELFTEST rc=0` |
+| 部署集闸 | 70 条引用（含 4 张位图尺寸核对）/ 92 条断言，fail 0；台架 `DS_SELFTEST rc=0` |
 | 测试钩子 | `window.tango`（含 `frames()` / `pegPoint()` / `palettePoint()` / `setReducedMotion()`） |
 | 路由 | `#/c/<n>` · `#/daily` · `#/random/<band>/<token>` |
 
@@ -175,7 +175,7 @@ FAIL D4 锚点腿：贴着引用那个名字必须作为**完整标识符**出�
 | `js/sw-register.js` | 删除 | 与 `js/main.js` 的注册重复 |
 | `icons/`（5 个 PNG） | 删除 | 与 `assets/img/` 里的同一批图重复，那份有生成器 |
 | `DESIGN.md` | 3 处行号重钉 | 并线换了被引用的文件 |
-| `README.md` | 部署集闸那三对数（25→64、43→86）、node 层套件与条数（6 套 88 条 → 7 套 105 条）、`icons/*` → `assets/img/*` | 文档要指得到真的东西 |
+| `README.md` | 部署集闸那三对数（25→64→70、43→86→92，后者是 2026-10-28 补齐离线壳后重钉）、node 层套件与条数（6 套 88 条 → 7 套 105 条）、`icons/*` → `assets/img/*` | 文档要指得到真的东西 |
 | `tools/deploy-set.mjs` | 两对常量重钉（64 / 86） | 页面换了，钉的是实数 |
 | `deliverable.md` | 本文件 | 交付物 |
 
@@ -230,15 +230,15 @@ rows: 11 fail: 0     (test/storage.test.mjs)
 === console ===
 (none)
 === deploy-set ===
-部署集：64 条引用（含 4 张位图尺寸核对），失败 0 项
-rows: 86 fail: 0
+部署集：70 条引用（含 4 张位图尺寸核对），失败 0 项
+rows: 92 fail: 0
 DS_SELFTEST rc=0（0=每一刀都按预期发力、阴性对照按预期不发力）
-DS_SELFTEST_BASELINE 部署集：64 条引用（含 4 张位图尺寸核对），失败 0 项 rows=86
+DS_SELFTEST_BASELINE 部署集：70 条引用（含 4 张位图尺寸核对），失败 0 项 rows=92
 === ALL GREEN ===
 ```
 
 `RC=0`。node 侧 7 个套件合计 105 条断言、浏览器侧 5 档合计 66 条断言，全部 `fail: 0`，
-控制台 `(none)`，部署集双闸 64 条引用 / 86 条断言 0 失败、台架 rc=0。
+控制台 `(none)`，部署集双闸 70 条引用 / 92 条断言 0 失败、台架 rc=0。
 
 ## 10. 未实现 / 需人接手
 
